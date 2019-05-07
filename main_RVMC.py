@@ -7,44 +7,24 @@ from scipy import stats
 from matplotlib.animation import FuncAnimation
 import matplotlib.ticker
 
-# FuncAnimation = animation.FuncAnimation
-
-# https://www.overleaf.com/12363089pdxxmvywvxgk#/47036402/
-
-v_bulk = -32.99  # km / s (from Frinchaboy 2008)
-
-# velocities = np.array([-19.4, -17.7, -1.7, -39.8, -7.9, -34.1, -35.1, -44.1, 10.9, -32.2, 13.0, -50.4, -45.4, -33.5, -44.1, -26.5, -27.6, -35.5, -33.6, -30.2, -36.8, -43.2])
-
-# errors = np.array([20.2, 8.4, 1.5, 8.3, 5.6, 0.1, 7.7, 6.5, 8.9, 7.9, 12.8, 25.0, 8.0, 3.3, 9.5, 8.5, 0.11, 14.6, 10.6, 4.1, 8.3, 7.9])
-
-rad_v_1 = np.array([6.3, -19.6, -1.7, -42.2, -32.9, -34.1, -36.4, -45.8, 8.5, -35.0, -19.9, -40.9, -46.1, -33.9, -42.6, -28.5, -27.59, -39.3, -35.0, -29.5, -36.8, -42.0])
-rad_v_1_err = np.array([1.0, 1.6, 1.5, 1.3, 0.5, 0.1, 1.0, 0.9, 1.1, 1.0, 1.9, 6.3, 1.5, 0.5, 2.0, 0.5, 0.11, 4.1, 2.0, 0.4, 1.4, 1.8])
-
-rad_v_2 = np.array([7.1, -19.6, -1.7, -30.5, -10.2, -34.7, -36.4, -45.8, 8.5, -58.6, -19.9, -42.9, -31.9, -34.1, -42.6, -28.5, -27.9, -39.3, -35.0, -29.5, -36.8, -41.0])
-rad_v_2_err = np.array([0.7, 1.6, 1.5, 1.3, 0.5, 0.2, 1.0, 0.9, 1.1, 1.5, 1.9, 4.3, 1.6, 0.4, 2.0, 0.5, 0.09, 4.1, 2.0, 0.4, 1.4, 1.8])
-
 
 def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_period=1.4, max_period=3500):
+    """
+    Create the random samples following their respective distributions.
+    :param number_of_stars:     (int) number of stars (duh)
+    :param min_mass:            (scalar) minimum mass in solar masses
+    :param max_mass:            (scalar) maximum mass in solar masses
+    :param min_period:          (scalar) minimum period in days
+    :param max_period:          (scalar) maximum period in days.
+    :return:    Note returns the masses in kg and period in seconds.
+    """
     inclination = np.random.uniform(size=number_of_stars) * np.pi * 0.5
-    # phase = np.cos(np.random.uniform(size=number_of_stars) * np.pi * 2)
     a = 1.3  # IMF powerlaw index -1 because of sample method
     primary_mass = np.random.uniform(min_mass**(-a), max_mass**(-a), size=number_of_stars) ** -(1. / a) * 2e30
 
-    # period = 10 ** np.random.uniform(0.15 ** -2, 3.5 ** -2, size=number_of_stars) ** -0.5 * 24 * 3600
-    # print np.log10(min_period)**-2,  np.log10(max_period)**-2
-
     period = 10**(np.random.uniform(np.log10(min_period)**0.5, np.log10(max_period)**0.5, number_of_stars)**2) * 24 * 3600
-
-    # period = np.array([])
-    #
-    # while len(period) < number_of_stars:
-    #     period = np.concatenate([period, f_P(min_period, max_period, max([number_of_stars, 100])) * 3600 * 24])
-    #     # print period.shape, number_of_stars, len(period) < number_of_stars
-    # period = period[:number_of_stars]
-
-
-    # mass_ratio = np.random.uniform(0.1**(1./100), 1, size=number_of_stars)**100
     mass_ratio = np.random.uniform(0.1, 1, number_of_stars)
+    # In case you want a mass ratio distribution as f(q) ~ q**-0.1
     # mass_ratio = np.random.uniform(0.1 ** (1. / 1.1), 1, number_of_stars) ** 1.1
 
     orbit_rotation = np.random.uniform(0, 1, size=number_of_stars) * 2 * np.pi
@@ -55,27 +35,19 @@ def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_p
     return inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity
 
 
-def f_P(pmin, pmax, N):
-    """
-    Rejection sampling for the Period, simplest way to do it...  
-    """
-    # x = np.linspace(pmin, pmax, 10000)
-    # y = np.log10(x) ** -0.5
-    # norm = (np.sum(y) * (x[1] - x[0]))
-    y_max = np.log10(pmin) ** -0.5
-    P = np.random.uniform(pmin, pmax, size=N * 2)
-    f = np.random.uniform(0, y_max, size=N * 2)
-    return P[f < np.log10(P)**-0.5]
-
-
 def anomaly(E, e, t, P):
     return E - e * np.sin(E) - t * 2 * np.pi / P
 
 
 def find_eccentric_anomaly(eccentricity, time, period):
+    """
+    Finds the eccentric anomaly based on the eccentricity, period and part of the orbit that has been completed (here
+    based on time with 0 <= time < period). This has no analytical solution so it is numerically solved using brentq.
+    This can probably be sped up significantly by changing xtol to something higher than 2e-12 (the default tolerance).
+    """
     eccentric_anomaly = np.zeros(len(time))
     for i in range(len(time)):
-        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]))
+        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-2)
     return eccentric_anomaly
 
 
@@ -93,32 +65,41 @@ def semi_major_axis(period, primary_mass, mass_ratio):
 
 
 def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4, max_period=3500):
+    """
+    Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
+    :param number_of_stars:
+    :param min_mass:
+    :param max_mass:
+    :param binary_fraction:
+    :param min_period:
+    :param max_period:
+    :return:
+    """
 
     # minimum and maximum period in days.
 
     RV = np.zeros(number_of_stars)
 
-    # Should the number of binaries be random?? I am trying to fit this number, now there is a random deviation in it.
-    # binaries = np.random.uniform(size=number_of_stars) > (1 - binary_fraction)
+    # The number of binaries is randomly determined based on the binary fraction. It can also be a fixed number:
     # number_of_binaries = int(binary_fraction * number_of_stars)
     number_of_binaries = np.sum(np.random.uniform(0, 1, number_of_stars) < binary_fraction)
 
-    cluster_velocities = np.random.normal(0.0, 2.0, size=number_of_stars) + v_bulk
+    # Normally distributed cluster velocities around 0, currently with sigma_1D_cluster = 2 km/s
+    cluster_velocities = np.random.normal(0.0, 2.0, size=number_of_stars)
 
+    # generate orbital parameters and stellar properties. Note: only for the binary stars!
     inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = \
         initialize_parameters(number_of_stars=number_of_binaries, min_mass=min_mass, max_mass=max_mass,
                               min_period=min_period, max_period=max_period)
 
+    # Get the radial velocities of the binaries
     semi_major_axes = semi_major_axis(period, primary_mass, mass_ratio)
-
     v_orb_max = max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes)
-
     RV_binary = binary_radial_velocity(v_orb_max, inclination, eccentricity, orbit_rotation, eccentric_anomaly)
 
     RV[:number_of_binaries] = RV_binary + cluster_velocities[:number_of_binaries]
     RV[number_of_binaries:] = cluster_velocities[number_of_binaries:]
 
-    # print np.sum(np.abs(RV - v_bulk) > 50) / float(number_of_stars)
     return RV
 
 
@@ -144,37 +125,30 @@ def ks(synthesized, observed, **kwargs):
     return ksval, pval
 
 
-def fbin_search(velocities=rad_v_1, fmin=0, fmax=1, Npoints=100, Nstars=10**4, Nsamples=1000, errors=rad_v_1_err, **kwargs):
+def fbin_search(velocities=[], fmin=0, fmax=1, Npoints=100, Nstars=10**4, Nsamples=1000, errors=[], **kwargs):
+    """
+    Loops through binary fractions to find the best fitting fraction for the observed radial velocities. Fitting done
+    by means of KS test. Will do some bootstrapping if observation errors are supplied (the bootstrapping might be
+    questionable, not sure)
+    :param velocities:  (array) observed radial velocities in km/s
+    :param fmin:        (scalar) lowest binary fraction to be tested
+    :param fmax:        (scalar) higest binary fraction to be tested
+    :param Npoints:     (int) number of binary fractions to be tested
+    :param Nstars:      (int) number of stars per synthetic sample does not have to be equal to the sample size
+    :param Nsamples:    (int) number of bootstrap samples incase errors are specified
+    :param errors:      (array) observational errors in km/s
+    :param kwargs:      Keyword arguments passed to synthetic_RV_distribution
+    :return:
+    """
 
     binary_fractions = np.linspace(fmin, fmax, Npoints, endpoint=True)
     print binary_fractions
-
-
-    # fig, axarr = plt.subplots(1, 2, sharex=True)
-    # axarr[0].set_xlabel("Binary fraction")
-    # axarr[0].set_ylabel("Probability")
-    # axarr[0].set_title("Pvalues")
-    #
-    # axarr[1].set_title("KS value")
-    # axarr[1].set_xlabel("Binary fraction")
-    # axarr[1].set_ylabel("KS value")
 
     print "Generating distributions"
     synth_dists = np.zeros((Npoints, Nstars))
     for i, fbin in enumerate(binary_fractions):
         synth_dists[i] = synthetic_RV_distribution(binary_fraction=fbin, number_of_stars=Nstars, **kwargs)
         print "Progress: %i %%" % i
-
-    # fig = plt.figure()
-    # hist = plt.hist(synth_dists[i], bins=np.linspace(-400, 400, 500), histtype="step", normed=True, cumulative=True)  # , log=True)
-    # plt.xlabel("Radial velocity (km s$^-1$)")
-    # plt.ylabel("$f\ (RV)$")
-    # plt.xlim([-400, 400])
-    # # plt.ylim([0, 0.02])
-    #
-    # ani = FuncAnimation(fig, update_hist, interval=100, frames=Npoints, repeat=True, fargs=(synth_dists,))
-    # # ani.save("hist.mp4", fps=60)
-    # plt.show()
 
     if type(errors) != type(None):
 
@@ -203,16 +177,6 @@ def fbin_search(velocities=rad_v_1, fmin=0, fmax=1, Npoints=100, Nstars=10**4, N
         np.save("pvals", pvals)
         np.save("ksvals", ksvals)
         np.save("binary_fraction", binary_fractions)
-        
-        #fig = plt.figure()
-        #global ax
-        #ax = plt.plot(binary_fractions, pvals[:,0])
-        #plt.ylim([0, 1])
-        #plt.xlabel("Binary fraction")
-        #plt.ylabel("p-value")
-
-        #ani = FuncAnimation(fig, update, frames=Nsamples, interval=50, fargs=(pvals,binary_fractions))
-        #plt.show()
 
         print "plotting the stuff"
         
@@ -257,7 +221,18 @@ def fbin_search(velocities=rad_v_1, fmin=0, fmax=1, Npoints=100, Nstars=10**4, N
         plt.show()
 
 
-def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=rad_v_1, **kwargs):
+def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwargs):
+    """
+    Same as fbin_search, but without the option of bootstrapping and in both period as binary fraction
+    :param fmin:
+    :param fmax:
+    :param pmin:
+    :param pmax:
+    :param Npoints:
+    :param velocities:
+    :param kwargs:
+    :return:
+    """
 
     binary_fractions = np.linspace(fmin, fmax, Npoints)
     # period_range = np.linspace(pmin, pmax, Npoints)
@@ -313,28 +288,17 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=rad_v_1, 
     np.save("ksvals", ksvals)
     np.save("pvals", pvals)
     
-    fig.savefig("fancy_plaatje_Np200_P500.pdf")
-    fig.savefig("fancy_plaatje_Np200_P500.png")
+    fig.savefig("fbin_pmin_exploration.pdf")
+    fig.savefig("fbin_pmin_exploration.png")
     plt.show()
 
 
-def update_hist(i, data):
-    plt.cla()
-    plt.hist(data[i], bins=np.linspace(-400, 400, 500), histtype="step", normed=True, cumulative=True)  # , log=True)
-    plt.xlabel("Radial velocity (km s$^-1$)")
-    plt.ylabel("$f\ (RV)$")
-    plt.xlim([-400, 400])
-    # plt.ylim([0, 0.02])
-
-
-def update(i, pvals, bf):
-    # print "hoi"
-    # print bf, pvals[:,i]
-    ax[0].set_data(bf, pvals[:,i])
-    return ax,
-
-
 def cdf_plot(fbin=0.7):
+    """
+    Make a cdf of a distribution for a given binary fraction, currently requires global variables rad_v_1 and rad_v_2 at the moment...
+    :param fbin:
+    :return:
+    """
 
     synthesized1 = synthetic_RV_distribution(number_of_stars=10**5, min_period=1.5, binary_fraction=fbin)
     #synthesized2 = synthetic_RV_distribution(number_of_stars=10 ** 5, min_period=10, binary_fraction=0.75)
@@ -352,9 +316,9 @@ def cdf_plot(fbin=0.7):
     plt.show()
     
 
-def std_search(velocities=rad_v_1, Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmin=1.5, **kwargs):
+def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmin=1.5, **kwargs):
     """
-    Uses the randomness of the observed sample to determine the range of possible binaryt fractions.
+    Uses the randomness of the observed sample to determine the range of possible binary fractions.
     """
     sample_size = len(velocities)
     binary_fractions = np.linspace(fmin, fmax, Npoints)
@@ -402,6 +366,12 @@ def std_search(velocities=rad_v_1, Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100
 
 
 def simple_std_plot(number_of_samples=10**5, **kwargs):
+    """
+    Remake the plot of the M17 paper.
+    :param number_of_samples:
+    :param kwargs:
+    :return:
+    """
 
     nbins=1000
 
@@ -441,7 +411,17 @@ def simple_std_plot(number_of_samples=10**5, **kwargs):
 
 
 def plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity):
-
+    """
+    Plot the distributions.
+    :param inclination:
+    :param eccentric_anomaly:
+    :param primary_mass:
+    :param period:
+    :param mass_ratio:
+    :param orbit_rotation:
+    :param eccentricity:
+    :return:
+    """
 
     N = len(inclination)
     fig, axarr = plt.subplots(3,3, figsize=(8,8))
@@ -472,8 +452,33 @@ def plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio,
     plt.show()
 
 
-simple_std_plot(min_mass=6)
+def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample_size=12, big_sample_size=10**5, **kwargs):
+    import time
 
+    print "Starting small samples"
+    start = time.time()
+    sig1D1 = np.std([synthetic_RV_distribution(sample_size, **kwargs) for i in range(number_of_samples)], axis=1)
+    print "It took %.3g seconds" % (time.time() - start)
+
+    print "\nStarting big sample"
+    start = time.time()
+    RV_dist = synthetic_RV_distribution(number_of_stars=big_sample_size, **kwargs)
+    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, sample_size)), axis=1)
+    print "It took %.3g seconds" % (time.time() - start)
+
+    nbins = 1000
+    plt.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"many small samples")
+    plt.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"one big sample")
+    plt.legend()
+    plt.xlim([0,50])
+    plt.ylim([0,0.1])
+    plt.xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
+    plt.ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+    plt.show()
+
+# simple_std_plot(min_mass=6)
+
+compare_one_big_sample_vs_many_small_samples(binary_fraction=0.3)
 
 
 # std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
@@ -483,59 +488,3 @@ simple_std_plot(min_mass=6)
 
 # fbin_search(Nsamples=5000, Nstars=10**5, Npoints=100, fmin=0.5, fmax=1, errors=rad_v_1_err, velocities=rad_v_1, max_period=100)# number_of_stars=1000)
 # cdf_plot(fbin=1)
-
-
-"""
-period = 2 * 24 * 3600
-primary_mass = 5e30
-mass_ratio = 0.5
-eccentricity = 0.9
-phase = np.zeros(10000)
-#inclination, phase, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = \
-#    initialize_parameters(number_of_stars=10000)
-
-#for i in range(10000):
-#    phase[i] = make_phase(period, primary_mass, mass_ratio, eccentricity)
-
-
-v2 = orbital_velocity2(period, primary_mass, mass_ratio, eccentricity, phase)
-v3 = orbital_velocity3(period, primary_mass, mass_ratio, eccentricity, phase)
-
-#plt.plot(phase1, 1000. / 2 / np.pi / np.sum(1/v1) / v1)
-a = semi_major_axis(period, primary_mass, mass_ratio)
-r = distance_r(phase, a, eccentricity)
-
-plt.hist(r)
-plt.show()
-
-plt.hist((1 / np.sum(r / v2)) * r / v2, histtype="step")
-plt.hist((1 / np.sum(r / v3)) * r / v3, histtype="step")
-#plt.plot(v2)
-plt.show()
-
-plt.hist(phase)
-plt.show()
-
-"""
-
-# Mathematica ding
-# # Integrate[Sqrt[(a^2 + a Cos[x])/((1 - a^2) (1 + a Cos[x])^2)], {x, 0, 2pi}]
-#
-# RV1 = synthetic_RV_distribution(number_of_stars=10**5, min_mass=3, binary_fraction=0.7)
-# ##RV2 = synthetic_RV_distribution(number_of_stars=100000, min_mass=6, binary_fraction=0.3)
-# # Data3 = np.array([-60.52,-32.96,-25.69,51.8,-8.35,-37.62,-34.45,45.38,-44.85,-28.9,-32.88,-24.72,-51.17,-45.23,\
-# #                  10.46,-10.66,-33.26])
-# print "Stanard deviation of velocities: %.3g" % np.std(RV1, ddof=1)
-#
-# #plot_RV_dist([RV1])
-# RV_std = []
-# for i in range(10000):
-#     RV_std.append(np.std(synthetic_RV_distribution(10, min_mass=3, binary_fraction=0.7), ddof=1))
-#
-# print np.mean(RV_std), np.std(RV_std, ddof=1)
-
-
-# parameter_check()
-# peak at 0.22
-
-
