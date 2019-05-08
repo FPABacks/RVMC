@@ -460,6 +460,7 @@ def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample
     sig1D1 = np.std([synthetic_RV_distribution(sample_size, **kwargs) for i in range(number_of_samples)], axis=1)
     print "It took %.3g seconds" % (time.time() - start)
 
+    # This is the fast way!
     print "\nStarting big sample"
     start = time.time()
     RV_dist = synthetic_RV_distribution(number_of_stars=big_sample_size, **kwargs)
