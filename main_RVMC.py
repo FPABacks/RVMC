@@ -7,6 +7,8 @@ from scipy import stats
 from matplotlib.animation import FuncAnimation
 import matplotlib.ticker
 
+RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
+
 
 def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_period=1.4, max_period=3500):
     """
@@ -64,7 +66,8 @@ def semi_major_axis(period, primary_mass, mass_ratio):
     return (4 * np.pi ** 2 / (G.value * (1 + mass_ratio) * primary_mass * period ** 2)) ** -0.333
 
 
-def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4, max_period=3500):
+def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
+                              max_period=3500, sigma_dyn=2.0):
     """
     Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
     :param number_of_stars:
@@ -75,17 +78,16 @@ def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binar
     :param max_period:
     :return:
     """
-
-    # minimum and maximum period in days.
-
-    RV = np.zeros(number_of_stars)
-
     # The number of binaries is randomly determined based on the binary fraction. It can also be a fixed number:
     # number_of_binaries = int(binary_fraction * number_of_stars)
-    number_of_binaries = np.sum(np.random.uniform(0, 1, number_of_stars) < binary_fraction)
+    binaries = np.random.uniform(0, 1, number_of_stars) < binary_fraction
+    number_of_binaries = np.sum(binaries)
 
     # Normally distributed cluster velocities around 0, currently with sigma_1D_cluster = 2 km/s
-    cluster_velocities = np.random.normal(0.0, 2.0, size=number_of_stars)
+    cluster_velocities = np.random.normal(0.0, sigma_dyn, size=number_of_stars)
+
+    # An extra dispersion caused by measurement errors??
+    # measurement_errors = np.random.normal(0.0, measured_errors, size=number_of_stars)
 
     # generate orbital parameters and stellar properties. Note: only for the binary stars!
     inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = \
@@ -97,31 +99,24 @@ def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binar
     v_orb_max = max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes)
     RV_binary = binary_radial_velocity(v_orb_max, inclination, eccentricity, orbit_rotation, eccentric_anomaly)
 
-    RV[:number_of_binaries] = RV_binary + cluster_velocities[:number_of_binaries]
-    RV[number_of_binaries:] = cluster_velocities[number_of_binaries:]
+    RV = cluster_velocities  # + measurement_errors
+    RV[binaries] += RV_binary
 
     return RV
 
 
-def plot_RV_dist(RV_array):
-    for RV in RV_array:
-        plt.hist(RV, bins=np.linspace(-400, 400, 50), histtype="step", normed=True)  # , log=True)
-    plt.xlabel("Radial velocity (km s$^-1$)")
-    plt.ylabel("$f\ (RV)$")
-    plt.xlim([-400, 400])
-    plt.ylim([0, 0.004])
-    plt.show()
+def N_samples_with_error(number_of_stars=12, number_of_samples=10**5, errors=[2.0], **kwargs):
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, **kwargs)
+    many_dists = np.random.choice(RV_dist, (number_of_samples, number_of_samples)) +\
+                 np.random.normal(0, errors, (number_of_samples, number_of_stars))
+    return many_dists
 
 
-def ks(synthesized, observed, **kwargs):
+def ks(synthesized, observed):
     """
     Performs a Kolmogorov-Smirnov test to compare the measured distribution to the synthesized distribution.
     """
-    # print "fbin: ", fbin
-    # np.random.seed(1234)  # Use seed for consistency? (THIS MAKES REPETITIONS USELESS!)
-    # synthesized = synthetic_RV_distribution(binary_fraction=fbin, **kwargs)
     ksval, pval = stats.ks_2samp(observed, synthesized)
-    # print "ks_val: ", ks_val
     return ksval, pval
 
 
@@ -293,29 +288,6 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwa
     plt.show()
 
 
-def cdf_plot(fbin=0.7):
-    """
-    Make a cdf of a distribution for a given binary fraction, currently requires global variables rad_v_1 and rad_v_2 at the moment...
-    :param fbin:
-    :return:
-    """
-
-    synthesized1 = synthetic_RV_distribution(number_of_stars=10**5, min_period=1.5, binary_fraction=fbin)
-    #synthesized2 = synthetic_RV_distribution(number_of_stars=10 ** 5, min_period=10, binary_fraction=0.75)
-
-    bins = np.linspace(-300, 300, 10**4)
-    plt.hist(rad_v_1, histtype="step", cumulative=True, bins=bins, lw=2, color="green", label="Sample 1", normed=True)
-    plt.hist(rad_v_2, histtype="step", cumulative=True, bins=bins, lw=2, color="blue", label="Sample 2", normed=True)
-    plt.hist(synthesized1, histtype="step", cumulative=True, bins=bins, lw=2, color="red", label="Synthetic", normed=True)
-    # plt.hist(synthesized2, histtype="step", cumulative=True, bins=bins, lw=2, color="orange", label="Synthetic, fbin=0.4",
-    #          normed=True)
-    plt.xlim([-75, 15])
-    plt.xlabel("$v_r$ [km s$^{-1}$]")
-    plt.ylabel("Cumulative distribution")
-    plt.legend(loc="upper left")
-    plt.show()
-    
-
 def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmin=1.5, **kwargs):
     """
     Uses the randomness of the observed sample to determine the range of possible binary fractions.
@@ -365,7 +337,7 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
     plt.show()
 
 
-def simple_std_plot(number_of_samples=10**5, **kwargs):
+def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     """
     Remake the plot of the M17 paper.
     :param number_of_samples:
@@ -374,14 +346,25 @@ def simple_std_plot(number_of_samples=10**5, **kwargs):
     """
 
     nbins=1000
-
+    print measured_errors.shape
     fig, (fax, pax) = plt.subplots(1, 2, figsize=(6,3))
 
     nstars = 12
 
-    sig1D1 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.7, **kwargs)) for i in range(number_of_samples)])
-    sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.28, **kwargs)) for i in range(number_of_samples)])
-    sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.12, **kwargs)) for i in range(number_of_samples)])
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.7, **kwargs)
+
+    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.28, **kwargs)
+    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.12, **kwargs)
+
+    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
+    # sig1D1 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.7, **kwargs)) for i in range(number_of_samples)])
+    # sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.28, **kwargs)) for i in range(number_of_samples)])
+    # sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.12, **kwargs)) for i in range(number_of_samples)])
 
     fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
     fax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.28")
@@ -392,13 +375,24 @@ def simple_std_plot(number_of_samples=10**5, **kwargs):
     fax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     fax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
-    sig1D1 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=1.4, **kwargs)) for i in range(number_of_samples)])
-    sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=30, **kwargs)) for i in range(number_of_samples)])
-    sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=8*365, **kwargs)) for i in range(number_of_samples)])
+    # sig1D1 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=1.4, **kwargs)) for i in range(number_of_samples)])
+    # sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=30, **kwargs)) for i in range(number_of_samples)])
+    # sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=8*365, **kwargs)) for i in range(number_of_samples)])
+
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=1.4, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=30, **kwargs)
+    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=8*365, **kwargs)
+    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+
 
     pax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
     pax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
     pax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
+
     pax.legend()
     pax.set_xlim([0,50])
     pax.set_ylim([0,0.1])
@@ -406,7 +400,7 @@ def simple_std_plot(number_of_samples=10**5, **kwargs):
     pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
     plt.tight_layout()
-    plt.savefig("sigma1D_test1.pdf")
+    plt.savefig("sigma1D_test_with_rttot.pdf")
     plt.show()
 
 
@@ -477,9 +471,9 @@ def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample
     plt.ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
     plt.show()
 
-# simple_std_plot(min_mass=6)
+simple_std_plot(min_mass=6, measured_errors=RV_errors)
 
-compare_one_big_sample_vs_many_small_samples(binary_fraction=0.3)
+# compare_one_big_sample_vs_many_small_samples(binary_fraction=0.3)
 
 
 # std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
