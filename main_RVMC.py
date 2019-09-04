@@ -20,7 +20,7 @@ def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_p
     :param max_period:          (scalar) maximum period in days.
     :return:    Note returns the masses in kg and period in seconds.
     """
-    inclination = np.random.uniform(size=number_of_stars) * np.pi * 0.5
+    inclination = np.arccos(np.random.random(size=number_of_stars))
     a = 1.3  # IMF powerlaw index -1 because of sample method
     primary_mass = np.random.uniform(min_mass**(-a), max_mass**(-a), size=number_of_stars) ** -(1. / a) * 2e30
 
