@@ -327,8 +327,8 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
 
     # Plotting
     bins = np.linspace(0, 50, 100)
-    plt.hist(stds[low_i], bins=bins, histtype="step", label="$f_{bin} = %.2g$" % low_bound_fbin, normed=True)
-    plt.hist(stds[high_i], bins=bins, histtype="step", label="$f_{bin} = %.2g$" % high_bound_fbin, normed=True)
+    plt.hist(stds[low_i], bins=bins, histtype="step", label="$f_{bin} = %.2g$" % low_bound_fbin, density=True)
+    plt.hist(stds[high_i], bins=bins, histtype="step", label="$f_{bin} = %.2g$" % high_bound_fbin, density=True)
     plt.axvline(obs_std, lw=2, color='red', alpha=0.5, label="Observed")
     plt.xlabel("$\sigma_{1D}$ [km s$^{-1}$]")
     plt.ylabel("Frequency [(km s$^{-1}$)$^{-1}$]")
@@ -339,7 +339,7 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
 
 def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     """
-    Remake the plot of the M17 paper.
+    Remake the plot of the M17 paper. This uses the fast method (drawing elements from a big sample)
     :param number_of_samples:
     :param kwargs:
     :return:
@@ -353,14 +353,17 @@ def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
 
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.7, **kwargs)
 
-    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
 
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.28, **kwargs)
-    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
 
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, binary_fraction=0.12, **kwargs)
 
-    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
 
     # sig1D1 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.7, **kwargs)) for i in range(number_of_samples)])
     # sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.28, **kwargs)) for i in range(number_of_samples)])
@@ -471,10 +474,218 @@ def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample
     plt.ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
     plt.show()
 
-simple_std_plot(min_mass=6, measured_errors=RV_errors)
+def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sample_size=10**5,
+                              measured_errors=RV_errors, **kwargs):
+    """
+    Remake the plot of the M17 paper generating a big sample and drawing several samples of the same size of the number of stars.
+    :param number_of_samples:
+    :param sample_size:
+    :param big_sample_size:
+    :param kwargs:
+    :return:
+    """
+    import time
 
-# compare_one_big_sample_vs_many_small_samples(binary_fraction=0.3)
+    nbins=1000
 
+    fig, (fax, pax) = plt.subplots(1, 2, figsize=(6,3))
+
+    print "Starting big samples"
+    start = time.time()
+
+    RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7, **kwargs)
+    RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.28, **kwargs)
+    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.12, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) + np.random.normal(0,
+                                                                                                    measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+
+
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.28")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.12")
+    fax.legend()
+    fax.set_xlim([0,50])
+    fax.set_ylim([0,0.1])
+    fax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
+    fax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+
+    RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=1.4, **kwargs)
+    RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=30, **kwargs)
+    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=8*365, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+
+    print "It took %.3g seconds" % (time.time() - start)
+
+    pax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
+    pax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
+    pax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
+    pax.legend()
+    pax.set_xlim([0,50])
+    pax.set_ylim([0,0.1])
+    pax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
+    pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+
+    plt.tight_layout()
+    plt.savefig("sigma1D_test_fast1.pdf")
+    plt.show()
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
+
+def poly(x, a, b, c, d, e):
+    return a + b * x + c * x ** 2 + d * x ** 3 + e * x ** 4
+
+
+def LogLikelihood_Pois_Integ(parm, model, yval, edges):
+    """
+    Calculates the loglikelihood using poisson
+    """
+    mod = lambda x: model(x, *parm)
+    ymod = np.zeros(len(yval))
+    for i in range(len(edges[:-1])):
+        ymod[i], ymoderr = quad(mod, edges[i], edges[i + 1])
+        # we don't normalise by bin width since the rate parameter
+        # is set by the model and needs to be counts per bin
+
+    pd = stats.poisson(ymod)  # we define our Poisson distribution
+    return -sum(np.log(pd.pmf(yval)))
+
+
+def binned_pdf(edges, model, parm):
+    """
+    Turn a smooth pdf into a stepped pdf
+    Only works with frozen scipy stats distributions (or distributions defined for compatibilty)
+    """
+    binned_model = np.zeros(len(edges) - 1)
+    mod = lambda x: model(x, *parm)
+    for i in range(len(edges[:-1])):
+        binned_model[i], ymoderr = quad(mod, edges[i], edges[i + 1])
+
+    # binned_model = (dist.cdf(edges[1:]) - dist.cdf(edges[:-1])) / (edges[1:] - edges[:-1])
+    xvals = np.repeat(edges[:], 2)
+    modvals = np.repeat(binned_model, 2)
+    modvals = np.insert(modvals, 0, 0.)
+    modvals = np.append(modvals, 0.)
+    return xvals, modvals
+
+def find_best_period(pmin=1.4, pmax=5500, Npoints=100, number_of_samples=10**7, sample_size=12,
+                     big_sample_size=10**6, measured_errors=RV_errors, measured_sigma=5.5, **kwargs):
+    """
+    Loops through minimum periods to find the best fitting pmin for the observed radial velocities.
+    :param obs_dispersion (scalar) observed velocity dispersion of the cluster
+    :param dispersion_error (scalar) error on the measured velocity dispersion
+    :param pmin:        (scalar) minimum period to be tested
+    :param Npoints:     (int) number of minumum periods to be tested
+    :param Nstars:      (int) number of stars per synthetic sample does not have to be equal to the sample size
+    :param sample_size (int) number of stars used to calculate the observed velocity dispersion
+    :param kwargs:      Keyword arguments passed to synthetic_RV_distribution
+    :return:
+    """
+
+    nbins=4001
+    temp_perc16_diff = 1e5
+    temp_perc05_diff = 1e5
+    temp_perc84_diff = 1e5
+    temp_sigma_diff = 1e5
+    start = time.time()
+
+    for period in np.logspace(np.log10(pmin), np.log10(pmax), Npoints):#np.array([365*9, 365*12, 365*20]):#
+        RV_dist = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7,
+                                            min_period=period, sigma_dyn=2.0, **kwargs)
+
+        sig1D = np.std(np.random.choice(RV_dist, (number_of_samples, sample_size))
+                        + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+
+        bin_edges = np.linspace(0, 500, nbins, endpoint=True)
+        n, bins = np.histogram(sig1D, bin_edges)
+
+        mode = bins[np.argmax(n)]
+        median = np.median(sig1D)
+
+        diff = np.abs(mode - measured_sigma)
+        if diff < temp_sigma_diff:
+            best_sig1D = sig1D
+            best_period = period
+            best_mode = mode
+            temp_sigma_diff = diff
+
+        fract = 0
+        fract_array = []
+        for b, f, i in zip(bins, n / float(np.sum(n)), range(len(bins))):
+            fract += f
+            fract_array.append(fract)
+
+        perc16 = bins[fract_array.index(find_nearest(fract_array, 0.16))]
+        perc84 = bins[fract_array.index(find_nearest(fract_array, 0.84))]
+        perc05 = bins[fract_array.index(find_nearest(fract_array, 0.05))]
+
+        diff_perc16 = np.abs(perc16 - measured_sigma)
+        if diff_perc16 < temp_perc16_diff:
+            perc16_sig1D = sig1D
+            perc16_period = period
+            best_perc16 = perc16
+            temp_perc16_diff = diff_perc16
+
+        diff_perc05 = np.abs(perc05 - measured_sigma)
+        if diff_perc05 < temp_perc05_diff:
+            perc05_sig1D = sig1D
+            perc05_period = period
+            best_perc05 = perc05
+            temp_perc05_diff = diff_perc05
+
+        print period, median, mode, perc16, perc05
+
+    print best_period, best_mode
+    print perc16_period, best_perc16
+    print perc05_period, best_perc05
+
+    print period, "it took %.4g s" % -(start - time.time())
+
+    fig, (pax) = plt.subplots(1, 1, figsize=(6,3))
+
+    if best_period > 2 and best_period < 30:
+        label_period =  int(best_period)
+        pax.hist(best_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
+                 label=r"P$_{\rm "r"cutoff}$= %.1f d" % (label_period))
+    elif best_period > 30 and best_period < 365:
+        label_period = int(best_period/30)
+        pax.hist(best_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
+                 label=r"P$_{\rm "r"cutoff}$= %.0f m" % (label_period))
+    elif best_period > 365:
+        label_period = int(best_period/365)
+        pax.hist(best_sig1D, histtype="step", bins=np.linspace(0,500,nbins), density=True,
+                 label=r"P$_{\rm "r"cutoff}$= %.0f y" % (label_period))
+
+    pax.hist(perc16_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
+             label=r"P$_{\rm "r"cutoff}$= %.1f m" % (int(perc16_period/31)))
+
+    pax.hist(perc05_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
+             label=r"P$_{\rm "r"cutoff}$= %.0f d" % (perc05_period))
+
+    pax.axvline(measured_sigma, ymax=0.2)
+
+    pax.legend()
+    pax.set_xlim(0,50)
+    pax.set_ylim(0,0.2)
+    pax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
+    pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+
+    plt.tight_layout()
+    plt.show()
+
+
+# find_best_period()
+
+simple_std_plot_bigSample(min_mass=6)
+
+# compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
 # std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
 
