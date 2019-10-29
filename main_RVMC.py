@@ -9,7 +9,6 @@ import matplotlib.ticker
 
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
 
-
 def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_period=1.4, max_period=3500):
     """
     Create the random samples following their respective distributions.
@@ -66,7 +65,7 @@ def semi_major_axis(period, primary_mass, mass_ratio):
     return (4 * np.pi ** 2 / (G.value * (1 + mass_ratio) * primary_mass * period ** 2)) ** -0.333
 
 
-def synthetic_RV_distribution(number_of_stars=12, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
+def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
                               max_period=3500, sigma_dyn=2.0):
     """
     Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
@@ -496,10 +495,12 @@ def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sampl
     RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7, **kwargs)
     RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.28, **kwargs)
     RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.12, **kwargs)
-    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) + np.random.normal(0,
-                                                                                                    measured_errors, (number_of_samples, sample_size)), axis=1)
-    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
-    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
 
 
     fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
@@ -575,8 +576,7 @@ def binned_pdf(edges, model, parm):
     modvals = np.append(modvals, 0.)
     return xvals, modvals
 
-def find_best_period(pmin=1.4, pmax=5500, Npoints=100, number_of_samples=10**7, sample_size=12,
-                     big_sample_size=10**6, measured_errors=RV_errors, measured_sigma=5.5, **kwargs):
+def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors, measured_sigma=5.5, **kwargs):
     """
     Loops through minimum periods to find the best fitting pmin for the observed radial velocities.
     :param obs_dispersion (scalar) observed velocity dispersion of the cluster
@@ -683,7 +683,7 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, number_of_samples=10**7, 
 
 # find_best_period()
 
-simple_std_plot_bigSample(min_mass=6)
+#simple_std_plot_bigSample(min_mass=6)
 
 # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
