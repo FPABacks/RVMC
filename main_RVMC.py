@@ -8,6 +8,7 @@ from matplotlib.animation import FuncAnimation
 import matplotlib.ticker
 
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
+np.random.seed(0)
 
 def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_period=1.4, max_period=3500):
     """
