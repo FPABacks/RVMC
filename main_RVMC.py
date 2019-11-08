@@ -684,7 +684,7 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
 
 # find_best_period()
 
-#simple_std_plot_bigSample(min_mass=6)
+# simple_std_plot_bigSample(min_mass=6)
 
 # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
