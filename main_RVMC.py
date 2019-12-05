@@ -6,11 +6,12 @@ from scipy import stats
 # from matplotlib.animation import FuncAnimation
 from matplotlib.animation import FuncAnimation
 import matplotlib.ticker
+plt.switch_backend('QT4Agg')
 
+# np.random.seed(0)
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
-np.random.seed(0)
 
-def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_period=1.4, max_period=3500):
+def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=1.4, max_period=3500):
     """
     Create the random samples following their respective distributions.
     :param number_of_stars:     (int) number of stars (duh)
@@ -20,17 +21,33 @@ def initialize_parameters(number_of_stars=100000, min_mass=3, max_mass=20, min_p
     :param max_period:          (scalar) maximum period in days.
     :return:    Note returns the masses in kg and period in seconds.
     """
-    inclination = np.random.uniform(size=number_of_stars) * np.pi * 0.5
+    inclination = np.random.uniform(0, 1, size=number_of_stars)# * np.pi * 0.5 #cosi = random(0,1)
+    inclination = np.arccos(inclination)
     a = 1.3  # IMF powerlaw index -1 because of sample method
     primary_mass = np.random.uniform(min_mass**(-a), max_mass**(-a), size=number_of_stars) ** -(1. / a) * 2e30
 
     period = 10**(np.random.uniform(np.log10(min_period)**0.5, np.log10(max_period)**0.5, number_of_stars)**2) * 24 * 3600
+    #Oepik distribution
+    # period = 10**(np.random.uniform(np.log10(min_period), np.log10(max_period), number_of_stars)) * 24 * 3600
+
     mass_ratio = np.random.uniform(0.1, 1, number_of_stars)
     # In case you want a mass ratio distribution as f(q) ~ q**-0.1
     # mass_ratio = np.random.uniform(0.1 ** (1. / 1.1), 1, number_of_stars) ** 1.1
 
     orbit_rotation = np.random.uniform(0, 1, size=number_of_stars) * 2 * np.pi
-    eccentricity = np.random.uniform(0, 1, size=number_of_stars)**2
+
+    eccentricity = (np.random.uniform(0**0.5, 0.9**0.5, number_of_stars)**2)
+    # Edit eccentricity array to avoid unphysical combinations of eccentricity and period
+    # All orbits with periods of 4 or less days are circularized e=0
+    # If the period is between 4 and 6 days and the eccentricity is high, divide it in half to better repesent the
+    # observed distribution
+    index4d = np.where(period <= 4 * 24 * 3600)
+    index6d = np.where(period[np.where(eccentricity[np.where((period > 4 * 24 * 3600) &
+                                                             (period < 6 * 24 * 3600))])] > 0.9)
+    eccentricity[index4d] = 0.
+    for i6d in index6d:
+        eccentricity[i6d] = eccentricity[i6d] / 2.
+
     time = np.random.uniform(0, 1, size=number_of_stars) * period
     eccentric_anomaly = find_eccentric_anomaly(eccentricity, time, period)
 
@@ -78,6 +95,13 @@ def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, bi
     :param max_period:
     :return:
     """
+
+    #Print model parameters
+    print '\n #### Creating synthetic RV distribution #### \n ' \
+          'Number of stars: %i \n Mass range: [%5.2f, %5.2f] Msun \n Binary fraction: %5.2f \n ' \
+          'Period range: [%5.2f, %5.2f] days \n Cluster dynamical dispersion: %5.2f km/s\n ########' \
+          %(number_of_stars, min_mass, max_mass, binary_fraction, min_period, max_period, sigma_dyn)
+
     # The number of binaries is randomly determined based on the binary fraction. It can also be a fixed number:
     # number_of_binaries = int(binary_fraction * number_of_stars)
     binaries = np.random.uniform(0, 1, number_of_stars) < binary_fraction
@@ -505,8 +529,11 @@ def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sampl
 
 
     fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
+    fax.axvline(np.median(sig1D1))
     fax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.28")
+    fax.axvline(np.median(sig1D2))
     fax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.12")
+    fax.axvline(np.median(sig1D3))
     fax.legend()
     fax.set_xlim([0,50])
     fax.set_ylim([0,0.1])
@@ -682,16 +709,24 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
     plt.show()
 
 
-# find_best_period()
+if __name__ == '__main__':
 
-# simple_std_plot_bigSample(min_mass=6)
+    s# find_best_period()
 
-# compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
+    # simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
 
-# std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
+    # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
+    # std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
 
-# fbin_period_search(0, 1, 1.001, 500, number_of_stars=1 * 10**5, Npoints=200)
+    # inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = initialize_parameters()
+    # # plt.hist(np.log10(period/(24*3600)), cumulative=True, bins=50)
+    # plt.hist(eccentricity, bins=50, cumulative=True, histtype='step', label='1')
+    # # plt.hist(period, cumulative=True, bins=50)
+    # plt.legend()
+    # plt.show()
 
-# fbin_search(Nsamples=5000, Nstars=10**5, Npoints=100, fmin=0.5, fmax=1, errors=rad_v_1_err, velocities=rad_v_1, max_period=100)# number_of_stars=1000)
-# cdf_plot(fbin=1)
+    # fbin_period_search(0, 1, 1.001, 500, number_of_stars=1 * 10**5, Npoints=200)
+
+    # fbin_search(Nsamples=5000, Nstars=10**5, Npoints=100, fmin=0.5, fmax=1, errors=rad_v_1_err, velocities=rad_v_1, max_period=100)# number_of_stars=1000)
+    # cdf_plot(fbin=1)
