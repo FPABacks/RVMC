@@ -99,7 +99,7 @@ def func(x, a, b, c):
     return a + (b * x) + (c * x * x) + (x * x * x)
 
 
-def find_best_Pmin(mode, median, p05, p16, p84, p95, bins, values, period, usemode=True):
+def find_best_Pmin(observed_sigma, mode, median, p05, p16, p84, p95, bins, values, period, usemode=True):
     diff, diff05, diff16, diff84, diff95 = 10, 10, 10, 10, 10
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
@@ -110,11 +110,11 @@ def find_best_Pmin(mode, median, p05, p16, p84, p95, bins, values, period, usemo
         messagem = 'median'
 
     for i, m in enumerate(median_or_mode):
-        diff_temp = np.abs(m - 5.6)
-        diff_temp05 = np.abs(p05[i] - 5.6)
-        diff_temp16 = np.abs(p16[i] - 5.6)
-        diff_temp84 = np.abs(p84[i] - 5.6)
-        diff_temp95 = np.abs(p95[i] - 5.6)
+        diff_temp = np.abs(m - observed_sigma)
+        diff_temp05 = np.abs(p05[i] - observed_sigma)
+        diff_temp16 = np.abs(p16[i] - observed_sigma)
+        diff_temp84 = np.abs(p84[i] - observed_sigma)
+        diff_temp95 = np.abs(p95[i] - observed_sigma)
         if diff_temp < diff:
             diff = diff_temp
             index = i
@@ -146,7 +146,7 @@ def find_best_Pmin(mode, median, p05, p16, p84, p95, bins, values, period, usemo
         ax = plt.subplot(111)
         color = next(ax._get_lines.prop_cycler)['color']
         plt.step(bins[tag][:-1], values[tag], where='post', color=color,
-                 label=r'$f_\mathrm{bin}$=%5.2f, %s' % (period[tag], message[i]))
+                 label=r'$P_{min}$=%5.2f, %s' % (period[tag], message[i]))
         plt.hlines(0.17-((i+1)/100.), p05[tag], p95[tag], color=color)
         plt.vlines([p16[tag], p84[tag]], 0.165-((i+1)/100.), 0.175-((i+1)/100.), color=color)
         plt.vlines(median_or_mode[tag], 0.165-((i+1)/100.), 0.175-((i+1)/100.), lw=3, color=color)
@@ -155,12 +155,15 @@ def find_best_Pmin(mode, median, p05, p16, p84, p95, bins, values, period, usemo
 
     # plt.vlines(mode,0,0.15)
     #
-    plt.vlines(5.5, 0, 0.05, 'k')
+    plt.vlines(5.6, 0, 0.05, 'k')
+    # plt.axvline(5.6, 'k')
+    plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+
     plt.legend()
     plt.show()
 
 
-def find_best_fbin(mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=True):
+def find_best_fbin(observed_sigma, mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=False):
     diff, diff05, diff16, diff84, diff95 = 10, 10, 10, 10, 10
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
@@ -171,11 +174,11 @@ def find_best_fbin(mode, median, p05, p16, p84, p95, bins, values, fbins, usemod
         messagem = 'median'
 
     for i, m in enumerate(median_or_mode):
-        diff_temp = np.abs(m - 5.6)
-        diff_temp05 = np.abs(p05[i] - 5.6)
-        diff_temp16 = np.abs(p16[i] - 5.6)
-        diff_temp84 = np.abs(p84[i] - 5.6)
-        diff_temp95 = np.abs(p95[i] - 5.6)
+        diff_temp = np.abs(m - observed_sigma)
+        diff_temp05 = np.abs(p05[i] - observed_sigma)
+        diff_temp16 = np.abs(p16[i] - observed_sigma)
+        diff_temp84 = np.abs(p84[i] - observed_sigma)
+        diff_temp95 = np.abs(p95[i] - observed_sigma)
         if diff_temp < diff:
             diff = diff_temp
             index = i
@@ -217,7 +220,8 @@ def find_best_fbin(mode, median, p05, p16, p84, p95, bins, values, fbins, usemod
     # plt.vlines(mode,0,0.15)
     #
     plt.vlines(5.6, 0, 0.05, 'k')
-    plt.axvspan(5.1, 6.1, ymin=0, ymax=0.1, color='k', alpha=0.5, lw=0)
+    # plt.axvspan(5.1, 6.1, ymin=0, ymax=0.1, color='k', alpha=0.5, lw=0)
+    plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
 
     plt.legend()
     plt.show()
@@ -225,11 +229,12 @@ def find_best_fbin(mode, median, p05, p16, p84, p95, bins, values, fbins, usemod
 
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
 
-allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(pmin=1.4, pmax=3300,
-                                                                                          Npoints=100,
-                                                                                          bin=0.5)
+allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(pmin=1.4, pmax=3500,
+                                                                                          Npoints=50,
+                                                                                          bin=0.5, fbin=0.6)
 
-find_best_Pmin(mode, median, p05, p16, p84, p95, bins, values, period, usemode=False)
+
+find_best_Pmin(5.6, mode, median, p05, p16, p84, p95, bins, values, period, usemode=False)
 
 # allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(fmin=0.00, fmax=1., Npoints=100,
 #                                                                                  bin=0.5)

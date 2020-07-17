@@ -6,13 +6,14 @@ from scipy import stats
 # from matplotlib.animation import FuncAnimation
 from matplotlib.animation import FuncAnimation
 import matplotlib.ticker
+
 plt.switch_backend('QT4Agg')
 
 # np.random.seed(0)
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
+# RV_errors = np.zeros(12)
 
-
-def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=1.41, max_period=3162):
+def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=1.41, max_period=3500):
     """
     Create the random samples following their respective distributions.
     :param number_of_stars:     (int) number of stars (duh)
@@ -22,12 +23,12 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     :param max_period:          (scalar) maximum period in days.
     :return:    Note returns the masses in kg and period in seconds.
     """
-# <<<<<<< HEAD
+    # <<<<<<< HEAD
     inclination = np.arccos(np.random.random(size=number_of_stars))
-# =======
-#     inclination = np.random.uniform(0, 1, size=number_of_stars)# * np.pi * 0.5 #cosi = random(0,1)
-#     inclination = np.arccos(inclination)
-# >>>>>>> b87fcb5dc52eee01ddf66b2f6134e958ddde04cb
+    # =======
+    #     inclination = np.random.uniform(0, 1, size=number_of_stars)# * np.pi * 0.5 #cosi = random(0,1)
+    #     inclination = np.arccos(inclination)
+    # >>>>>>> b87fcb5dc52eee01ddf66b2f6134e958ddde04cb
     a = 2.3
     # primary_mass = np.random.uniform(min_mass**(-a), max_mass**(-a), size=number_of_stars) ** -(1. / a) * 2e30
 
@@ -37,28 +38,26 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     P = np.random.uniform(Pmax, Pmin, size=number_of_stars)
     primary_mass = P ** (1. / (-a + 1)) * min_mass * 2e30
 
-
-    period = 10**(np.random.uniform(np.log10(min_period)**0.5, np.log10(max_period)**0.5, number_of_stars)**2) * 24 * 3600
-    #Oepik distribution
+    period = 10 ** (np.random.uniform(np.log10(min_period) ** 0.5, np.log10(max_period) ** 0.5,
+                                      number_of_stars) ** 2) * 24 * 3600
+    # Oepik distribution
     # period = 10**(np.random.uniform(np.log10(min_period), np.log10(max_period), number_of_stars)) * 24 * 3600
 
     mass_ratio = np.random.uniform(0.1, 1., number_of_stars)
+    # mass_ratio = np.zeros(number_of_stars)
     # In case you want a mass ratio distribution as f(q) ~ q**-0.1
     # mass_ratio = np.random.uniform(0.1 ** (1. / 1.1), 1, number_of_stars) ** 1.1
 
     orbit_rotation = np.random.uniform(0, 1, size=number_of_stars) * 2 * np.pi
 
-
     eccentricity = np.zeros(number_of_stars)
     index6d = (period > (4 * 24 * 3600)) & (period < (6 * 24 * 3600))
-    eccentricity[index6d] = np.random.uniform(0**0.5, 0.5**0.5, np.sum(index6d))**2
-    eccentricity[np.logical_not(index6d)] = (np.random.uniform(0**0.5, 0.9**0.5, np.sum(np.logical_not(index6d)))**2)
+    eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
+    index4d = period < (4 * 24 * 3600)
+    eccentricity[np.logical_not(index6d) & np.logical_not(index4d)] = (
+                np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(np.logical_not(index6d) & np.logical_not(index4d))) ** 2)
 
     # eccentricity = (np.random.uniform(0**0.5, 0.9**0.5, number_of_stars)**2)
-
-
-
-
 
     # Edit eccentricity array to avoid unphysical combinations of eccentricity and period
     # All orbits with periods of 4 or less days are circularized e=0
@@ -96,27 +95,30 @@ def find_eccentric_anomaly(eccentricity, time, period):
     """
     eccentric_anomaly = np.zeros(len(time))
     for i in range(len(time)):
-        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-2)
+        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10 ** -2)
     return eccentric_anomaly
 
 
 def max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes):
     return ((mass_ratio / (1 + mass_ratio)) * ((G.value * primary_mass * (1 + mass_ratio) * (1 + eccentricity)) /
-                                               ((1 - eccentricity) * semi_major_axes))**0.5) / 1000.
+                                               ((1 - eccentricity) * semi_major_axes)) ** 0.5) / 1000.
+
+
 # def max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes):
 #     return ((1. / (1 + mass_ratio)) * ((G.value * primary_mass * (1 + mass_ratio) * (1 + eccentricity)) /
 #                                                ((1 - eccentricity) * semi_major_axes))**0.5) / 1000.
 
 
 def binary_radial_velocity(v_max, i, e, w, E):
-    return v_max * np.sin(i) * (e * np.cos(w) + np.cos(2 * np.arctan((((1 + e) / (1 - e))**0.5) * np.tan(0.5 * E)) + w))
+    return v_max * np.sin(i) * (
+                e * np.cos(w) + np.cos(2 * np.arctan((((1 + e) / (1 - e)) ** 0.5) * np.tan(0.5 * E)) + w))
 
 
 def semi_major_axis(period, primary_mass, mass_ratio):
     return ((4 * np.pi ** 2) / (G.value * (1 + mass_ratio) * primary_mass * period ** 2)) ** -0.333
 
 
-def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
+def synthetic_RV_distribution(number_of_stars=10 ** 5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
                               max_period=3500, sigma_dyn=2.0):
     """
     Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
@@ -129,11 +131,11 @@ def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, bi
     :return:
     """
 
-    #Print model parameters
+    # Print model parameters
     print '\n #### Creating synthetic RV distribution #### \n ' \
           'Number of stars: %i \n Mass range: [%5.2f, %5.2f] Msun \n Binary fraction: %5.2f \n ' \
           'Period range: [%5.2f, %5.2f] days \n Cluster dynamical dispersion: %5.2f km/s\n ########' \
-          %(number_of_stars, min_mass, max_mass, binary_fraction, min_period, max_period, sigma_dyn)
+          % (number_of_stars, min_mass, max_mass, binary_fraction, min_period, max_period, sigma_dyn)
 
     # The number of binaries is randomly determined based on the binary fraction. It can also be a fixed number:
     # number_of_binaries = int(binary_fraction * number_of_stars)
@@ -162,9 +164,9 @@ def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, bi
     return RV
 
 
-def N_samples_with_error(number_of_stars=12, number_of_samples=10**5, errors=[2.0], **kwargs):
+def N_samples_with_error(number_of_stars=12, number_of_samples=10 ** 5, errors=[2.0], **kwargs):
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, **kwargs)
-    many_dists = np.random.choice(RV_dist, (number_of_samples, number_of_samples)) +\
+    many_dists = np.random.choice(RV_dist, (number_of_samples, number_of_samples)) + \
                  np.random.normal(0, errors, (number_of_samples, number_of_stars))
     return many_dists
 
@@ -177,7 +179,7 @@ def ks(synthesized, observed):
     return ksval, pval
 
 
-def fbin_search(velocities=[], fmin=0, fmax=1, Npoints=100, Nstars=10**4, Nsamples=1000, errors=[], **kwargs):
+def fbin_search(velocities=[], fmin=0, fmax=1, Npoints=100, Nstars=10 ** 4, Nsamples=1000, errors=[], **kwargs):
     """
     Loops through binary fractions to find the best fitting fraction for the observed radial velocities. Fitting done
     by means of KS test. Will do some bootstrapping if observation errors are supplied (the bootstrapping might be
@@ -222,7 +224,7 @@ def fbin_search(velocities=[], fmin=0, fmax=1, Npoints=100, Nstars=10**4, Nsampl
             print "Sample number: %i" % sample_index
             for i, fbin in enumerate(binary_fractions):
                 # print "fbin: %.3g" % fbin
-                ksval, pval = ks(synth_dists[i], bootstrap_vels[:,sample_index], **kwargs)
+                ksval, pval = ks(synth_dists[i], bootstrap_vels[:, sample_index], **kwargs)
                 ksvals[i, sample_index] = ksval
                 pvals[i, sample_index] = pval
 
@@ -231,7 +233,7 @@ def fbin_search(velocities=[], fmin=0, fmax=1, Npoints=100, Nstars=10**4, Nsampl
         np.save("binary_fraction", binary_fractions)
 
         print "plotting the stuff"
-        
+
         fig, axarr = plt.subplots(1, 2, figsize=(8, 6))
         fractions = []
         for i in range(Nsamples):
@@ -289,7 +291,7 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwa
     binary_fractions = np.linspace(fmin, fmax, Npoints)
     # period_range = np.linspace(pmin, pmax, Npoints)
     period_range = np.logspace(np.log10(pmin), np.log10(pmax), Npoints)
-    
+
     ksvals = np.zeros((Npoints, Npoints))
     pvals = np.zeros((Npoints, Npoints))
 
@@ -300,14 +302,14 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwa
         for j, fbin in enumerate(binary_fractions):
             synth_dist = synthetic_RV_distribution(binary_fraction=fbin, min_period=p_cutoff, **kwargs)
 
-    # for i, fbin in enumerate(binary_fractions):
-    #     print "step %.3g \t fbin %.3g" % (i / float(Npoints), fbin) 
-    #     for j, pmin in enumerate(period_range):
+            # for i, fbin in enumerate(binary_fractions):
+            #     print "step %.3g \t fbin %.3g" % (i / float(Npoints), fbin)
+            #     for j, pmin in enumerate(period_range):
             # print "fbin: %.3g \n pmin: %.3g" % (fbin, pmin)
             ksval, pval = ks(synth_dist, velocities)
 
-            ksvals[i,j] = ksval
-            pvals[i,j] = pval
+            ksvals[i, j] = ksval
+            pvals[i, j] = pval
 
     fig, axarr = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -329,7 +331,7 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwa
     axarr[1].set_yscale('log')
     axarr[1].set_yticks([1, 3, 10, 30])
     axarr[1].get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    
+
     cb2 = fig.colorbar(cm1, ax=axarr[1])
     cb2.set_label("ks-value")
 
@@ -339,13 +341,13 @@ def fbin_period_search(fmin, fmax, pmin, pmax, Npoints=100, velocities=[], **kwa
     np.save("binary_fraction", binary_fractions)
     np.save("ksvals", ksvals)
     np.save("pvals", pvals)
-    
+
     fig.savefig("fbin_pmin_exploration.pdf")
     fig.savefig("fbin_pmin_exploration.png")
     plt.show()
 
 
-def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmin=1.5, **kwargs):
+def std_search(velocities=[], Nsamples=10 ** 5, fmin=0.0, fmax=1, Npoints=100, Pmin=1.5, **kwargs):
     """
     Uses the randomness of the observed sample to determine the range of possible binary fractions.
     """
@@ -359,7 +361,8 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
     for i, fbin in enumerate(binary_fractions):
         print "%.3g%%" % (float(i) / Npoints * 100)
         for j in range(Nsamples):
-            stds[i,j] = np.std(synthetic_RV_distribution(number_of_stars=sample_size, binary_fraction=fbin, min_period=Pmin, **kwargs))
+            stds[i, j] = np.std(
+                synthetic_RV_distribution(number_of_stars=sample_size, binary_fraction=fbin, min_period=Pmin, **kwargs))
 
     np.save("stds.npy", stds)
     np.save("fbins", binary_fractions)
@@ -367,7 +370,7 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
     low_bound_fbin = 1
     high_bound_fbin = 0
     low_i = 1
-    high_i=0
+    high_i = 0
 
     for i, fbin in enumerate(binary_fractions):
         std_array = np.sort(stds[i])
@@ -389,12 +392,12 @@ def std_search(velocities=[], Nsamples=10**5, fmin=0.0, fmax=1, Npoints=100, Pmi
     plt.axvline(obs_std, lw=2, color='red', alpha=0.5, label="Observed")
     plt.xlabel("$\sigma_{1D}$ [km s$^{-1}$]")
     plt.ylabel("Frequency [(km s$^{-1}$)$^{-1}$]")
-    plt.xlim([0,50])
+    plt.xlim([0, 50])
     plt.legend()
     plt.show()
 
 
-def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
+def simple_std_plot(number_of_samples=5 * 10 ** 5, measured_errors=[], **kwargs):
     """
     Remake the plot of the M17 paper. This uses the fast method (drawing elements from a big sample)
     :param number_of_samples:
@@ -402,9 +405,9 @@ def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     :return:
     """
 
-    nbins=1000
+    nbins = 1000
     print measured_errors.shape
-    fig, (fax, pax) = plt.subplots(1, 2, figsize=(6,3))
+    fig, (fax, pax) = plt.subplots(1, 2, figsize=(6, 3))
 
     nstars = 12
 
@@ -426,12 +429,12 @@ def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     # sig1D2 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.28, **kwargs)) for i in range(number_of_samples)])
     # sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, binary_fraction=0.12, **kwargs)) for i in range(number_of_samples)])
 
-    fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
-    fax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.28")
-    fax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.12")
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.70")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.28")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.12")
     fax.legend()
-    fax.set_xlim([0,50])
-    fax.set_ylim([0,0.1])
+    fax.set_xlim([0, 50])
+    fax.set_ylim([0, 0.1])
     fax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     fax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
@@ -440,22 +443,24 @@ def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     # sig1D3 = np.array([np.std(synthetic_RV_distribution(nstars, min_period=8*365, **kwargs)) for i in range(number_of_samples)])
 
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=1.4, **kwargs)
-    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    sig1D1 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (
+    number_of_samples, nstars)), axis=1)
 
     RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=30, **kwargs)
-    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    sig1D2 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (
+    number_of_samples, nstars)), axis=1)
 
-    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=8*365, **kwargs)
-    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (number_of_samples, nstars)), axis=1)
+    RV_dist = synthetic_RV_distribution(number_of_stars=number_of_samples, min_period=8 * 365, **kwargs)
+    sig1D3 = np.std(np.random.choice(RV_dist, (number_of_samples, nstars)) + np.random.normal(0, measured_errors, (
+    number_of_samples, nstars)), axis=1)
 
-
-    pax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
-    pax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
-    pax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
+    pax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
+    pax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
+    pax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
 
     pax.legend()
-    pax.set_xlim([0,50])
-    pax.set_ylim([0,0.1])
+    pax.set_xlim([0, 50])
+    pax.set_ylim([0, 0.1])
     pax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
@@ -464,7 +469,8 @@ def simple_std_plot(number_of_samples=5*10**5, measured_errors=[], **kwargs):
     plt.show()
 
 
-def plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity):
+def plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity,
+               cumulative=False):
     """
     Plot the distributions.
     :param inclination:
@@ -478,35 +484,37 @@ def plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio,
     """
 
     N = len(inclination)
-    fig, axarr = plt.subplots(3,3, figsize=(8,8))
+    fig, axarr = plt.subplots(3, 3, figsize=(8, 8))
 
-    axarr[0][0].hist(inclination, bins=int(N**0.333), density=True)
+    axarr[0][0].hist(inclination, bins=int(N ** 0.333), density=True, cumulative=cumulative)
     axarr[0][0].set_xlabel("inclination")
 
-    axarr[0][1].hist(eccentric_anomaly, bins=int(N**0.333), density=True)
+    axarr[0][1].hist(eccentric_anomaly, bins=int(N ** 0.333), density=True, cumulative=cumulative)
     axarr[0][1].set_xlabel("eccentric anomaly")
 
-    axarr[0][2].hist(primary_mass, bins=int(N**0.333), density=True)
-    axarr[0][2].set_xlabel("primary_mass")
+    axarr[0][2].hist(primary_mass/2e30, bins=int(N ** 0.333), density=True, cumulative=cumulative)
+    axarr[0][2].set_xlabel("primary_mass (M$_{\odot})$")
 
-    axarr[1][0].hist(period, bins=np.geomspace(np.min(period), np.max(period), int(N**0.333)), density=True)
-    axarr[1][0].set_xlabel("period")
+    axarr[1][0].hist(period / (24 * 3600), bins=np.geomspace(np.min(period/(24 * 3600)), np.max(period/(24 * 3600)), int(N ** 0.333)),
+                     density=True, cumulative=cumulative)
+    axarr[1][0].set_xlabel("period (days)")
     axarr[1][0].set_xscale("log")
 
-    axarr[1][1].hist(mass_ratio, bins=int(N**0.333), density=True)
+    axarr[1][1].hist(mass_ratio, bins=int(N ** 0.333), density=True, cumulative=cumulative)
     axarr[1][1].set_xlabel("mass_ratio")
 
-    axarr[1][2].hist(orbit_rotation, bins=int(N**0.333), density=True)
+    axarr[1][2].hist(orbit_rotation, bins=int(N ** 0.333), density=True, cumulative=cumulative)
     axarr[1][2].set_xlabel("orbit_rotation")
 
-    axarr[2][0].hist(eccentricity, bins=int(N**0.333), density=True)
+    axarr[2][0].hist(eccentricity, bins=int(N ** 0.333), density=True, cumulative=cumulative)
     axarr[2][0].set_xlabel("eccentricity")
 
     plt.tight_layout()
     plt.show()
 
 
-def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample_size=12, big_sample_size=10**5, **kwargs):
+def compare_one_big_sample_vs_many_small_samples(number_of_samples=10 ** 5, sample_size=12, big_sample_size=10 ** 5,
+                                                 **kwargs):
     import time
 
     print "Starting small samples"
@@ -525,13 +533,14 @@ def compare_one_big_sample_vs_many_small_samples(number_of_samples=10**5, sample
     plt.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"many small samples")
     plt.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"one big sample")
     plt.legend()
-    plt.xlim([0,50])
-    plt.ylim([0,0.1])
+    plt.xlim([0, 50])
+    plt.ylim([0, 0.1])
     plt.xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     plt.ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
     plt.show()
 
-def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sample_size=10**5,
+
+def simple_std_plot_bigSample(number_of_samples=10 ** 5, sample_size=12, big_sample_size=10 ** 5,
                               measured_errors=RV_errors, **kwargs):
     """
     Remake the plot of the M17 paper generating a big sample and drawing several samples of the same size of the number of stars.
@@ -543,9 +552,9 @@ def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sampl
     """
     import time
 
-    nbins=1000
+    nbins = 1000
 
-    fig, (fax, pax) = plt.subplots(1, 2, figsize=(6,3))
+    fig, (fax, pax) = plt.subplots(1, 2, figsize=(6, 3))
 
     print "Starting big samples"
     start = time.time()
@@ -560,36 +569,54 @@ def simple_std_plot_bigSample(number_of_samples=10**5, sample_size=12, big_sampl
     sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) +
                     np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
 
-
-    fax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.70")
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.70")
     fax.axvline(np.median(sig1D1))
-    fax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.28")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.28")
     fax.axvline(np.median(sig1D2))
-    fax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"f$_{\rm bin}$=0.12")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.12")
     fax.axvline(np.median(sig1D3))
     fax.legend()
-    fax.set_xlim([0,50])
-    fax.set_ylim([0,0.1])
+    fax.set_xlim([0, 50])
+    fax.set_ylim([0, 0.1])
     fax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     fax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
+    fax.vlines(5.6, 0, 0.05, 'k')
+    fax.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+
+
     RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=1.4, **kwargs)
     RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=30, **kwargs)
-    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=8*365, **kwargs)
-    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
-    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
-    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, min_period=8 * 365, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors,
+                                                                                                    (number_of_samples,
+                                                                                                     sample_size)),
+                    axis=1, ddof=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors,
+                                                                                                    (number_of_samples,
+                                                                                                     sample_size)),
+                    axis=1, ddof=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) + np.random.normal(0, measured_errors,
+                                                                                                    (number_of_samples,
+                                                                                                     sample_size)),
+                    axis=1, ddof=1)
 
     print "It took %.3g seconds" % (time.time() - start)
 
-    pax.hist(sig1D1, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
-    pax.hist(sig1D2, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
-    pax.hist(sig1D3, histtype="step", bins=np.linspace(0,500,nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
+    pax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=1.4 d")
+    pax.axvline(np.median(sig1D1))
+    pax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=30 d")
+    pax.axvline(np.median(sig1D2))
+    pax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"P$_{\rm cutoff}$=8 yr")
+    pax.axvline(np.median(sig1D3))
     pax.legend()
-    pax.set_xlim([0,50])
-    pax.set_ylim([0,0.1])
+    pax.set_xlim([0, 50])
+    pax.set_ylim([0, 0.1])
     pax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+
+    pax.vlines(5.6, 0, 0.05, 'k')
+    pax.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
 
     plt.tight_layout()
     plt.savefig("sigma1D_test_fast1.pdf")
@@ -638,6 +665,7 @@ def binned_pdf(edges, model, parm):
     modvals = np.append(modvals, 0.)
     return xvals, modvals
 
+
 def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors, measured_sigma=5.5, **kwargs):
     """
     Loops through minimum periods to find the best fitting pmin for the observed radial velocities.
@@ -651,19 +679,19 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
     :return:
     """
 
-    nbins=4001
+    nbins = 4001
     temp_perc16_diff = 1e5
     temp_perc05_diff = 1e5
     temp_perc84_diff = 1e5
     temp_sigma_diff = 1e5
     start = time.time()
 
-    for period in np.logspace(np.log10(pmin), np.log10(pmax), Npoints):#np.array([365*9, 365*12, 365*20]):#
+    for period in np.logspace(np.log10(pmin), np.log10(pmax), Npoints):  # np.array([365*9, 365*12, 365*20]):#
         RV_dist = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7,
                                             min_period=period, sigma_dyn=2.0, **kwargs)
 
         sig1D = np.std(np.random.choice(RV_dist, (number_of_samples, sample_size))
-                        + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
+                       + np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1)
 
         bin_edges = np.linspace(0, 500, nbins, endpoint=True)
         n, bins = np.histogram(sig1D, bin_edges)
@@ -710,23 +738,23 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
 
     print period, "it took %.4g s" % -(start - time.time())
 
-    fig, (pax) = plt.subplots(1, 1, figsize=(6,3))
+    fig, (pax) = plt.subplots(1, 1, figsize=(6, 3))
 
     if best_period > 2 and best_period < 30:
-        label_period =  int(best_period)
+        label_period = int(best_period)
         pax.hist(best_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
                  label=r"P$_{\rm "r"cutoff}$= %.1f d" % (label_period))
     elif best_period > 30 and best_period < 365:
-        label_period = int(best_period/30)
+        label_period = int(best_period / 30)
         pax.hist(best_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
                  label=r"P$_{\rm "r"cutoff}$= %.0f m" % (label_period))
     elif best_period > 365:
-        label_period = int(best_period/365)
-        pax.hist(best_sig1D, histtype="step", bins=np.linspace(0,500,nbins), density=True,
+        label_period = int(best_period / 365)
+        pax.hist(best_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
                  label=r"P$_{\rm "r"cutoff}$= %.0f y" % (label_period))
 
     pax.hist(perc16_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
-             label=r"P$_{\rm "r"cutoff}$= %.1f m" % (int(perc16_period/31)))
+             label=r"P$_{\rm "r"cutoff}$= %.1f m" % (int(perc16_period / 31)))
 
     pax.hist(perc05_sig1D, histtype="step", bins=np.linspace(0, 500, nbins), density=True,
              label=r"P$_{\rm "r"cutoff}$= %.0f d" % (perc05_period))
@@ -734,8 +762,8 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
     pax.axvline(measured_sigma, ymax=0.2)
 
     pax.legend()
-    pax.set_xlim(0,50)
-    pax.set_ylim(0,0.2)
+    pax.set_xlim(0, 50)
+    pax.set_ylim(0, 0.2)
     pax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     pax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
@@ -744,17 +772,19 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
 
 
 if __name__ == '__main__':
-    simple_std_plot_bigSample()
-    # plot_dists(*initialize_parameters())
+    # simple_std_plot_bigSample()
+    # plot_dists(*initialize_parameters(), cumulative=True)
     # find_best_period()
 
-    # simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
+    simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
 
     # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
     # std_search(velocities=rad_v_1, Pmin=1.5, max_period=100, Npoints=22)
 
     # inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = initialize_parameters()
+    # plot_dists(inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity, cumulative=True)
+
     # # plt.hist(np.log10(period/(24*3600)), cumulative=True, bins=50)
     # plt.hist(eccentricity, bins=50, cumulative=True, histtype='step', label='1')
     # # plt.hist(period, cumulative=True, bins=50)
