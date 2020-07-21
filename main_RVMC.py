@@ -13,6 +13,7 @@ plt.switch_backend('QT4Agg')
 RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
 # RV_errors = np.zeros(12)
 
+
 def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=1.41, max_period=3500):
     """
     Create the random samples following their respective distributions.
@@ -23,12 +24,8 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     :param max_period:          (scalar) maximum period in days.
     :return:    Note returns the masses in kg and period in seconds.
     """
-    # <<<<<<< HEAD
     inclination = np.arccos(np.random.random(size=number_of_stars))
-    # =======
-    #     inclination = np.random.uniform(0, 1, size=number_of_stars)# * np.pi * 0.5 #cosi = random(0,1)
-    #     inclination = np.arccos(inclination)
-    # >>>>>>> b87fcb5dc52eee01ddf66b2f6134e958ddde04cb
+
     a = 2.3
     # primary_mass = np.random.uniform(min_mass**(-a), max_mass**(-a), size=number_of_stars) ** -(1. / a) * 2e30
 
@@ -44,7 +41,6 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     # period = 10**(np.random.uniform(np.log10(min_period), np.log10(max_period), number_of_stars)) * 24 * 3600
 
     mass_ratio = np.random.uniform(0.1, 1., number_of_stars)
-    # mass_ratio = np.zeros(number_of_stars)
     # In case you want a mass ratio distribution as f(q) ~ q**-0.1
     # mass_ratio = np.random.uniform(0.1 ** (1. / 1.1), 1, number_of_stars) ** 1.1
 
@@ -52,10 +48,14 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
 
     eccentricity = np.zeros(number_of_stars)
     index6d = (period > (4 * 24 * 3600)) & (period < (6 * 24 * 3600))
+    index_rest = period > (6 * 24 * 3600)
     eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
-    index4d = period < (4 * 24 * 3600)
-    eccentricity[np.logical_not(index6d) & np.logical_not(index4d)] = (
-                np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(np.logical_not(index6d) & np.logical_not(index4d))) ** 2)
+    eccentricity[index_rest] = (np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(index_rest)) ** 2)
+    #
+    # eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
+    # index4d = period < (4 * 24 * 3600)
+    # eccentricity[np.logical_not(index6d) & np.logical_not(index4d)] = (
+    #             np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(np.logical_not(index6d) & np.logical_not(index4d))) ** 2)
 
     # eccentricity = (np.random.uniform(0**0.5, 0.9**0.5, number_of_stars)**2)
 
@@ -95,11 +95,19 @@ def find_eccentric_anomaly(eccentricity, time, period):
     """
     eccentric_anomaly = np.zeros(len(time))
     for i in range(len(time)):
-        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10 ** -2)
+        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-4)
     return eccentric_anomaly
 
 
 def max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes):
+    """
+
+    :param primary_mass:    Mass of the primary star
+    :param mass_ratio:      Mass of the secondary
+    :param eccentricity:    Eccentricity of the system
+    :param semi_major_axes: Total semi major axis of the system
+    :return: The maximum velocity of the primary. (that is at periastron.
+    """
     return ((mass_ratio / (1 + mass_ratio)) * ((G.value * primary_mass * (1 + mass_ratio) * (1 + eccentricity)) /
                                                ((1 - eccentricity) * semi_major_axes)) ** 0.5) / 1000.
 
@@ -115,11 +123,18 @@ def binary_radial_velocity(v_max, i, e, w, E):
 
 
 def semi_major_axis(period, primary_mass, mass_ratio):
-    return ((4 * np.pi ** 2) / (G.value * (1 + mass_ratio) * primary_mass * period ** 2)) ** -0.333
+    """
+    Calculates the sum of the semi major axes of the two orbits (primary and secondary)
+    :param period:
+    :param primary_mass:
+    :param mass_ratio:
+    :return:
+    """
+    return ((4 * np.pi ** 2) / (G.value * (1 + mass_ratio) * primary_mass * period ** 2))**-(1./3.)
 
 
-def synthetic_RV_distribution(number_of_stars=10 ** 5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
-                              max_period=3500, sigma_dyn=2.0):
+def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
+                              max_period=3500, sigma_dyn=2.0, numerical_RV=False):
     """
     Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
     :param number_of_stars:
@@ -131,11 +146,11 @@ def synthetic_RV_distribution(number_of_stars=10 ** 5, min_mass=6, max_mass=20, 
     :return:
     """
 
-    # Print model parameters
+    #Print model parameters
     print '\n #### Creating synthetic RV distribution #### \n ' \
           'Number of stars: %i \n Mass range: [%5.2f, %5.2f] Msun \n Binary fraction: %5.2f \n ' \
           'Period range: [%5.2f, %5.2f] days \n Cluster dynamical dispersion: %5.2f km/s\n ########' \
-          % (number_of_stars, min_mass, max_mass, binary_fraction, min_period, max_period, sigma_dyn)
+          %(number_of_stars, min_mass, max_mass, binary_fraction, min_period, max_period, sigma_dyn)
 
     # The number of binaries is randomly determined based on the binary fraction. It can also be a fixed number:
     # number_of_binaries = int(binary_fraction * number_of_stars)
@@ -145,18 +160,33 @@ def synthetic_RV_distribution(number_of_stars=10 ** 5, min_mass=6, max_mass=20, 
     # Normally distributed cluster velocities around 0, currently with sigma_1D_cluster = 2 km/s
     cluster_velocities = np.random.normal(0.0, sigma_dyn, size=number_of_stars)
 
-    # An extra dispersion caused by measurement errors??
-    # measurement_errors = np.random.normal(0.0, measured_errors, size=number_of_stars)
+    if not numerical_RV:
+        # generate orbital parameters and stellar properties. Note: only for the binary stars!
+        inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = \
+            initialize_parameters(number_of_stars=number_of_binaries, min_mass=min_mass, max_mass=max_mass,
+                                  min_period=min_period, max_period=max_period)
 
-    # generate orbital parameters and stellar properties. Note: only for the binary stars!
-    inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = \
-        initialize_parameters(number_of_stars=number_of_binaries, min_mass=min_mass, max_mass=max_mass,
-                              min_period=min_period, max_period=max_period)
+        # Get the radial velocities of the binaries
+        semi_major_axes = semi_major_axis(period, primary_mass, mass_ratio)
+        v_orb_max = max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes)
+        RV_binary = binary_radial_velocity(v_orb_max, inclination, eccentricity, orbit_rotation, eccentric_anomaly)
 
-    # Get the radial velocities of the binaries
-    semi_major_axes = semi_major_axis(period, primary_mass, mass_ratio)
-    v_orb_max = max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes)
-    RV_binary = binary_radial_velocity(v_orb_max, inclination, eccentricity, orbit_rotation, eccentric_anomaly)
+    else:  # take the primary velocities from numerically calculated 2 body orbits.
+        try:
+            data = np.load("Numerical_RV/binary_velocities.npy")
+        except IOError as err:
+            print err
+            print "Cannot find the file with the binary velocities, did you make it first?"
+            print "You might need to run numerical_2_body.py in Numerical_RV/"
+
+        t_steps = np.random.choice(np.arange(data.shape[0]), size=number_of_binaries, replace=True)
+        stars = np.random.choice(np.arange(data.shape[1]), size=number_of_binaries, replace=True)
+
+        inclinations = np.arccos(np.random.random(size=number_of_binaries))
+        orbit_rotations = np.random.uniform(0, np.pi * 2, size=number_of_binaries)
+
+        RV_binary = data[t_steps, stars, 0] * np.cos(orbit_rotations) + data[t_steps, stars, 1] * np.sin(orbit_rotations)
+        RV_binary *= np.cos(inclinations) * 0.001
 
     RV = cluster_velocities  # + measurement_errors
     RV[binaries] += RV_binary
@@ -623,6 +653,74 @@ def simple_std_plot_bigSample(number_of_samples=10 ** 5, sample_size=12, big_sam
     plt.show()
 
 
+def compare_mc_numerical(number_of_samples=10 ** 5, sample_size=12, big_sample_size=10 ** 5,
+                         measured_errors=RV_errors, **kwargs):
+    """
+    Compares the results of the two methods
+    :param number_of_samples:
+    :param sample_size:
+    :param big_sample_size:
+    :param kwargs:
+    :return:
+    """
+    nbins = 1000
+
+    fig, fax = plt.subplots(1, 1, figsize=(3, 3))
+
+    print "Starting big samples"
+
+    RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7, **kwargs)
+    RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.28, **kwargs)
+    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.12, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.70", color="r")
+    fax.axvline(np.median(sig1D1), color="r")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.28", color="b")
+    fax.axvline(np.median(sig1D2), color="b")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, label=r"f$_{\rm bin}$=0.12", color="g")
+    fax.axvline(np.median(sig1D3), color="g")
+
+
+    # numerical orbits method
+    RV_dist1 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.7, numerical_RV=True, **kwargs)
+    RV_dist2 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.28, numerical_RV=True, **kwargs)
+    RV_dist3 = synthetic_RV_distribution(number_of_stars=big_sample_size, binary_fraction=0.12, numerical_RV=True, **kwargs)
+    sig1D1 = np.std(np.random.choice(RV_dist1, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+    sig1D2 = np.std(np.random.choice(RV_dist2, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+    sig1D3 = np.std(np.random.choice(RV_dist3, (number_of_samples, sample_size)) +
+                    np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle="--", color="r")
+    fax.axvline(np.median(sig1D1), linestyle="--", color="r")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle="--", color="b")
+    fax.axvline(np.median(sig1D2), linestyle="--", color="b")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle="--", color="g")
+    fax.axvline(np.median(sig1D3), linestyle="--", color="g")
+
+    fax.legend()
+    fax.set_xlim([0, 50])
+    fax.set_ylim([0, 0.1])
+    fax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
+    fax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
+
+    fax.vlines(5.6, 0, 0.05, 'k')
+    fax.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+
+
+    plt.tight_layout()
+    plt.savefig("method_comparison.pdf")
+    plt.show()
+
+
+
 def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
@@ -776,7 +874,8 @@ if __name__ == '__main__':
     # plot_dists(*initialize_parameters(), cumulative=True)
     # find_best_period()
 
-    simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
+    # simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
+    compare_mc_numerical()
 
     # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 
