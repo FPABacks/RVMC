@@ -14,7 +14,7 @@ RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6
 # RV_errors = np.zeros(12)
 
 
-def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=1.41, max_period=3500):
+def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_period=10.**0.15, max_period=10.**3.5):
     """
     Create the random samples following their respective distributions.
     :param number_of_stars:     (int) number of stars (duh)
@@ -41,6 +41,13 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     # period = 10**(np.random.uniform(np.log10(min_period), np.log10(max_period), number_of_stars)) * 24 * 3600
 
     mass_ratio = np.random.uniform(0.1, 1., number_of_stars)
+
+    #############
+    # primary_mass[:] = 10 * 2.e30
+    # mass_ratio[:] = 0.5
+    # period[:] = 20 * 3600 * 24
+    #############
+
     # In case you want a mass ratio distribution as f(q) ~ q**-0.1
     # mass_ratio = np.random.uniform(0.1 ** (1. / 1.1), 1, number_of_stars) ** 1.1
 
@@ -51,6 +58,9 @@ def initialize_parameters(number_of_stars=100000, min_mass=6, max_mass=20, min_p
     index_rest = period > (6 * 24 * 3600)
     eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
     eccentricity[index_rest] = (np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(index_rest)) ** 2)
+
+
+
     #
     # eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
     # index4d = period < (4 * 24 * 3600)
@@ -95,7 +105,7 @@ def find_eccentric_anomaly(eccentricity, time, period):
     """
     eccentric_anomaly = np.zeros(len(time))
     for i in range(len(time)):
-        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-4)
+        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-6)
     return eccentric_anomaly
 
 
@@ -118,7 +128,7 @@ def max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes
 
 
 def binary_radial_velocity(v_max, i, e, w, E):
-    return v_max * np.sin(i) * (
+    return (1 / (1 + e)) * v_max * np.sin(i) * (
                 e * np.cos(w) + np.cos(2 * np.arctan((((1 + e) / (1 - e)) ** 0.5) * np.tan(0.5 * E)) + w))
 
 
@@ -133,8 +143,8 @@ def semi_major_axis(period, primary_mass, mass_ratio):
     return ((4 * np.pi ** 2) / (G.value * (1 + mass_ratio) * primary_mass * period ** 2))**-(1./3.)
 
 
-def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
-                              max_period=3500, sigma_dyn=2.0, numerical_RV=False):
+def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=10.**0.15,
+                              max_period=10.**3.5, sigma_dyn=2.0, numerical_RV=False):
     """
     Simulates the radial velocities of <number of stars> in a cluster for specified parameters below.
     :param number_of_stars:
@@ -166,14 +176,16 @@ def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, bi
             initialize_parameters(number_of_stars=number_of_binaries, min_mass=min_mass, max_mass=max_mass,
                                   min_period=min_period, max_period=max_period)
 
+
         # Get the radial velocities of the binaries
         semi_major_axes = semi_major_axis(period, primary_mass, mass_ratio)
         v_orb_max = max_orbital_velocity(primary_mass, mass_ratio, eccentricity, semi_major_axes)
+        # np.save("original_K1.npy", v_orb_max)
         RV_binary = binary_radial_velocity(v_orb_max, inclination, eccentricity, orbit_rotation, eccentric_anomaly)
 
     else:  # take the primary velocities from numerically calculated 2 body orbits.
         try:
-            data = np.load("Numerical_RV/binary_velocities.npy")
+            data = np.load("Numerical_RV/radial_velocities.npy")
         except IOError as err:
             print err
             print "Cannot find the file with the binary velocities, did you make it first?"
@@ -183,10 +195,11 @@ def synthetic_RV_distribution(number_of_stars=10**5, min_mass=6, max_mass=20, bi
         stars = np.random.choice(np.arange(data.shape[1]), size=number_of_binaries, replace=True)
 
         inclinations = np.arccos(np.random.random(size=number_of_binaries))
+
         orbit_rotations = np.random.uniform(0, np.pi * 2, size=number_of_binaries)
 
         RV_binary = data[t_steps, stars, 0] * np.cos(orbit_rotations) + data[t_steps, stars, 1] * np.sin(orbit_rotations)
-        RV_binary *= np.cos(inclinations) * 0.001
+        RV_binary *= np.sin(inclinations) * 0.001
 
     RV = cluster_velocities  # + measurement_errors
     RV[binaries] += RV_binary
@@ -665,7 +678,7 @@ def compare_mc_numerical(number_of_samples=10 ** 5, sample_size=12, big_sample_s
     """
     nbins = 1000
 
-    fig, fax = plt.subplots(1, 1, figsize=(3, 3))
+    fig, fax = plt.subplots(1, 1, figsize=(8, 6))
 
     print "Starting big samples"
 
@@ -705,6 +718,18 @@ def compare_mc_numerical(number_of_samples=10 ** 5, sample_size=12, big_sample_s
     fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle="--", color="g")
     fax.axvline(np.median(sig1D3), linestyle="--", color="g")
 
+    sig1D1 = np.loadtxt("data_sana/fbin_0.70.dat").T
+    sig1D2 = np.loadtxt("data_sana/fbin_0.28.dat").T
+    sig1D3 = np.loadtxt("data_sana/fbin_0.12.dat").T
+
+    fax.hist(sig1D1, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle=":", color="r")
+    fax.axvline(np.median(sig1D1), linestyle=":", color="r")
+    fax.hist(sig1D2, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle=":", color="b")
+    fax.axvline(np.median(sig1D2), linestyle=":", color="b")
+    fax.hist(sig1D3, histtype="step", bins=np.linspace(0, 500, nbins), density=True, linestyle=":", color="g")
+    fax.axvline(np.median(sig1D3), linestyle=":", color="g")
+
+
     fax.legend()
     fax.set_xlim([0, 50])
     fax.set_ylim([0, 0.1])
@@ -714,11 +739,9 @@ def compare_mc_numerical(number_of_samples=10 ** 5, sample_size=12, big_sample_s
     fax.vlines(5.6, 0, 0.05, 'k')
     fax.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
 
-
     plt.tight_layout()
     plt.savefig("method_comparison.pdf")
     plt.show()
-
 
 
 def find_nearest(array, value):
@@ -869,13 +892,94 @@ def find_best_period(pmin=1.4, pmax=5500, Npoints=100, measured_errors=RV_errors
     plt.show()
 
 
+def test_distributions():
+
+    inclination, eccentric_anomaly, primary_mass, period, mass_ratio, orbit_rotation, eccentricity = initialize_parameters()
+    primary_mass2, period2, mass_ratio2, eccentricity2, semi_major_a = np.load("Numerical_RV/binary_properties.npy")
+
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(6,5))
+    ax1.hist(primary_mass / 2e30, cumulative=True, bins=np.geomspace(6, 20, 50), histtype="step")
+    ax1.hist(primary_mass2 / 2e30, cumulative=True, bins=np.geomspace(6, 20, 50), histtype="step")
+    ax2.hist(period / (3600 * 24), cumulative=True, bins=np.geomspace(10**0.15, 10**3.5, 50), histtype="step")
+    ax2.hist(period2 / (3600 * 24), cumulative=True, bins=np.geomspace(10**0.15, 10**3.5, 50), histtype="step")
+    ax3.hist(mass_ratio, cumulative=True, bins=50, histtype="step")
+    ax3.hist(mass_ratio2, cumulative=True, bins=50, histtype="step")
+    ax4.hist(eccentricity, cumulative=True, bins=50, histtype="step")
+    ax4.hist(eccentricity2, cumulative=True, bins=50, histtype="step")
+
+    ax1.set_xscale("log")
+    ax2.set_xscale("log")
+
+    ax1.set_title("Primary mass")
+    ax2.set_title("Period")
+    ax3.set_title("Mass ratio")
+    ax4.set_title("Eccentricity")
+    plt.tight_layout()
+    plt.show()
+
+def check_max_orbital_velocities():
+
+    a = synthetic_RV_distribution()
+    K1_1 = np.load("original_K1.npy")
+    K1_2 = np.load("Numerical_RV/radial_velocities.npy")[0,:,1]
+
+    plt.hist(K1_1, histtype="step", bins=100, density=True)
+    plt.hist(K1_2 * -0.001, histtype="step", bins=100, density=True)
+    plt.show()
+
+
+def check_vt():
+
+    m, p, q, e, a = np.load("Numerical_RV/binary_properties.npy")
+
+    selection = e > 0.7
+    selection *= p < 10 * 3600 * 24
+    selection *= q > 0.5
+
+    index = np.argwhere(selection).ravel()[0]
+
+    velocities = np.load("Numerical_RV/radial_velocities.npy")[:,index,:]
+
+    print m[index] / 2e30
+    print p[index] / (3600 * 24)
+    print q[index]
+    print e[index]
+
+
+
+    times = np.linspace(0, p[index], len(velocities))
+    E = find_eccentric_anomaly(np.repeat(e[index], len(times)), times, np.repeat(p[index], len(times)))
+
+    vels = binary_radial_velocity(velocities[0,1], np.pi * 0.5, e[index], 0, E)
+
+    plt.plot(times / (3600 * 24), velocities[:,1] * 0.001)
+    plt.plot(times / (3600 * 24), vels * 0.001)
+    plt.show()
+
+
+
+
+
 if __name__ == '__main__':
     # simple_std_plot_bigSample()
     # plot_dists(*initialize_parameters(), cumulative=True)
     # find_best_period()
 
     # simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
+    # test_distributions()
+    # check_max_orbital_velocities()
+    # check_vt()
     compare_mc_numerical()
+
+
+    # old = synthetic_RV_distribution()
+    # new = synthetic_RV_distribution(numerical_RV=True)
+    #
+    # plt.hist(old, histtype="step", cumulative = True, label="old", bins=500)
+    # plt.hist(new, histtype="step", cumulative = True, label="new", bins=500)
+    # plt.legend()
+    # plt.show()
+
 
     # compare_one_big_sample_vs_many_small_samples(binary_fraction=0.7)
 

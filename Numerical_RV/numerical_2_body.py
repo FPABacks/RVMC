@@ -86,6 +86,11 @@ def initialize_parameters(number_of_stars=1000, min_mass=6, max_mass=20, min_per
 
     period = 10**(np.random.uniform(np.log10(min_period)**0.5, np.log10(max_period)**0.5, number_of_stars)**2) * 24 * 3600
     mass_ratio = np.random.uniform(0.1, 1., number_of_stars)
+    #############
+    # primary_mass[:] = 10 * 2e30
+    # mass_ratio[:] = 0.5
+    # period[:] = 20 * 3600 * 24.
+    #############
     # mass_ratio = np.zeros(number_of_stars) + 0.01
 
     eccentricity = np.zeros(number_of_stars)
