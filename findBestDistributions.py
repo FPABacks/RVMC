@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import main_RVMC as RVMC
+from astropy.io import ascii
+import pickle
+import os
 from scipy.stats import skewnorm
 
 from scipy.optimize import curve_fit
@@ -9,10 +12,10 @@ from scipy.optimize import curve_fit
 plt.switch_backend('QT4Agg')
 
 
-def create_sig1D_distribution(measured_errors, number_of_samples=10 ** 5, sample_size=12,
+def create_sig1D_distribution(measured_errors=np.zeros(12), number_of_samples=10 ** 5, sample_size=12,
                               number_of_stars=10 ** 5, min_mass=6, max_mass=20, binary_fraction=0.7, min_period=1.4,
                               max_period=3500, sigma_dyn=2.0):
-    measured_errors = RV_errors
+    # measured_errors = RV_errors
 
     RV_dist = RVMC.synthetic_RV_distribution(number_of_stars, min_mass, max_mass, binary_fraction, min_period,
                                              max_period, sigma_dyn)
@@ -23,12 +26,17 @@ def create_sig1D_distribution(measured_errors, number_of_samples=10 ** 5, sample
     return sig1D
 
 
-def get_Pdistr_stats(pmin=1.4, pmax=3300, Npoints=5, bin=0.5, fbin=0.7):
+def get_Pdistr_stats(measured_errors=np.zeros(12), sample_size=12, pmin=1.4, pmax=3300, Npoints=5, bin=0.5, fbin=0.7):
     allSig1D, mode, mean, median, Allvalues, Allbins, p05, p16, p84, p95, periods = \
         [], [], [], [], [], [], [], [], [], [], []
+
     for period in np.logspace(np.log10(pmin), np.log10(pmax), Npoints):  # np.linspace(pmin, pmax, Npoints):#
-        print 'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, period)
-        sig1D = create_sig1D_distribution(measured_errors=RV_errors, min_period=period, binary_fraction=fbin)
+        print '\n --------------------------------------------- \n' \
+              'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, period)
+
+        sig1D = create_sig1D_distribution(measured_errors=measured_errors, sample_size=sample_size,
+                                          min_period=period, binary_fraction=fbin)
+
         values, bins, patches = plt.hist(sig1D, histtype="step", bins=np.arange(0, max(sig1D) + bin, bin),
                                          density=True, label=r'$P_{min}=$ %5.2f' % (period))
         index = np.where(values == np.max(values))
@@ -47,20 +55,26 @@ def get_Pdistr_stats(pmin=1.4, pmax=3300, Npoints=5, bin=0.5, fbin=0.7):
 
         Allvalues.append(values)
         Allbins.append(bins)
-        print 'mode = %5.2f, median = %5.2f, mean = %5.2f' % (
-            bins[index] + (bins[1] - bins[0]) / 2., np.median(sig1D), np.mean(sig1D))
+        print 'mode = %5.2f, median = %5.2f, mean = %5.2f, p84 = %5.2f, p16 = %5.2f' % (
+            bins[index] + (bins[1] - bins[0]) / 2., np.median(sig1D), np.mean(sig1D),
+            np.percentile(sig1D, 84), np.percentile(sig1D, 16))
     # plt.legend()
     # plt.show()
     plt.close()
     return allSig1D, mode, mean, median, Allvalues, Allbins, p05, p16, p84, p95, periods
 
 
-def get_fbinDist_stats(fmin=0., fmax=1., Npoints=100, bin=0.5, min_period=1.4):
+def get_fbinDist_stats(measured_errors=np.zeros(12), sample_size=12, fmin=0., fmax=1., Npoints=100, bin=0.5,
+                       min_period=1.4):
     allSig1D, mode, mean, median, Allvalues, Allbins, p05, p16, p84, p95, fbins = \
         [], [], [], [], [], [], [], [], [], [], []
     for fbin in np.linspace(fmin, fmax, Npoints):  #
-        print 'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, min_period)
-        sig1D = create_sig1D_distribution(measured_errors=RV_errors, min_period=min_period, binary_fraction=fbin)
+        print '\n --------------------------------------------- \n' \
+              'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, min_period)
+
+        sig1D = create_sig1D_distribution(sample_size=sample_size, measured_errors=measured_errors,
+                                          min_period=min_period, binary_fraction=fbin)
+
         values, bins, patches = plt.hist(sig1D, histtype="step", bins=np.arange(0, max(sig1D) + bin, bin),
                                          density=True, label=r'$f_{bin}=$ %5.2f' % (fbin))
         index = np.where(values == np.max(values))
@@ -79,8 +93,9 @@ def get_fbinDist_stats(fmin=0., fmax=1., Npoints=100, bin=0.5, min_period=1.4):
 
         Allvalues.append(values)
         Allbins.append(bins)
-        print 'mode = %5.2f, median = %5.2f, mean = %5.2f' % (
-            bins[index] + (bins[1] - bins[0]) / 2., np.median(sig1D), np.mean(sig1D))
+        print 'mode = %5.2f, median = %5.2f, mean = %5.2f, p84 = %5.2f, p16 = %5.2f' % (
+            bins[index] + (bins[1] - bins[0]) / 2., np.median(sig1D), np.mean(sig1D),
+            np.percentile(sig1D, 84), np.percentile(sig1D, 16))
     plt.close()
     # plt.legend()
     # plt.show()
@@ -90,17 +105,19 @@ def get_fbinDist_stats(fmin=0., fmax=1., Npoints=100, bin=0.5, min_period=1.4):
 def gaussian(x, mean, amplitude, standard_deviation):
     return amplitude * np.exp(- ((x - mean) / standard_deviation) ** 2)
 
+
 def find_nearest(array, value):
-    n = [abs(i-value) for i in array]
+    n = [abs(i - value) for i in array]
     idx = n.index(min(n))
     return idx, array[idx]
+
 
 def func(x, a, b, c):
     return a + (b * x) + (c * x * x) + (x * x * x)
 
 
-def find_best_Pmin(observed_sigma, mode, median, p05, p16, p84, p95, bins, values, period, usemode=True):
-    diff, diff05, diff16, diff84, diff95 = 10, 10, 10, 10, 10
+def find_best_Pmin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95, bins, values, period, usemode=False):
+    diff, diff05, diff16, diff84, diff95 = 100, 100, 100, 100, 100
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
         median_or_mode = mode
@@ -132,39 +149,49 @@ def find_best_Pmin(observed_sigma, mode, median, p05, p16, p84, p95, bins, value
             index95 = i
             # print index, diff, m
     print 'diff= %5.2f, i = %3i, %s = %5.2f, p16 = %5.2f, p84 = %5.2f' \
-          % (diff, index, messagem, median_or_mode[index], p16[index], p84[index])
+          % (diff, index, messagem, median_or_mode[index], p16[index16], p84[index84])
 
     min_period = period[index]
     print 'Pmin = %5.2f' % (min_period)
     plt.gca().set_prop_cycle(None)
 
-    tags = [0, index05, index16, index]
-    message = ['Sana12', '05perc', '16perc', 'best']
-
+    tags = [index05, index16, index, index84, index95, 0]
+    message = ['05perc', '16perc', 'best', '84perc', '95perc', 'Sana12']
 
     for i, tag in enumerate(tags):
         ax = plt.subplot(111)
         color = next(ax._get_lines.prop_cycler)['color']
         plt.step(bins[tag][:-1], values[tag], where='post', color=color,
                  label=r'$P_{min}$=%5.2f, %s' % (period[tag], message[i]))
-        plt.hlines(0.17-((i+1)/100.), p05[tag], p95[tag], color=color)
-        plt.vlines([p16[tag], p84[tag]], 0.165-((i+1)/100.), 0.175-((i+1)/100.), color=color)
-        plt.vlines(median_or_mode[tag], 0.165-((i+1)/100.), 0.175-((i+1)/100.), lw=3, color=color)
+        plt.hlines(0.17 - ((i + 1) / 100.), p05[tag], p95[tag], color=color)
+        plt.vlines([p16[tag], p84[tag]], 0.165 - ((i + 1) / 100.), 0.175 - ((i + 1) / 100.), color=color)
+        plt.vlines(median_or_mode[tag], 0.165 - ((i + 1) / 100.), 0.175 - ((i + 1) / 100.), lw=3, color=color)
 
-    plt.xlim(0, 50)
+    plt.xlim(0, 70)
+    plt.ylim(0, 0.25)
 
     # plt.vlines(mode,0,0.15)
     #
-    plt.vlines(5.6, 0, 0.05, 'k')
+    plt.vlines(observed_sigma, 0, 0.1, 'k')
     # plt.axvline(5.6, 'k')
-    plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+    plt.axvspan(observed_sigma - 0.5, observed_sigma + 0.5, ymin=0, ymax=0.4, color='k', alpha=0.5, lw=0)
+    # plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+
+    plt.xlabel(r'${\sigma_{1D}}$ ($\rm km\,s^{-1}$)')
+    plt.ylabel('Frequency')
 
     plt.legend()
-    plt.show()
+    plt.savefig('results/Pmin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.pdf')
+
+    # plt.show()
+    ascii.write(np.array([period[index], period[index05], period[index16], period[index84], period[index95]]),
+                'results/Pmin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.dat',
+                names=['best_Pmin', '0.05perc_Pmin', '0.16perc_Pmin', '0.84perc_Pmin', '0.95perc_Pmin'],
+                overwrite=True)
 
 
-def find_best_fbin(observed_sigma, mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=False):
-    diff, diff05, diff16, diff84, diff95 = 10, 10, 10, 10, 10
+def find_best_fbin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=False):
+    diff, diff05, diff16, diff84, diff95 = 100, 100, 100, 100, 100
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
         median_or_mode = mode
@@ -196,82 +223,135 @@ def find_best_fbin(observed_sigma, mode, median, p05, p16, p84, p95, bins, value
             index95 = i
             # print index, diff, m
     print 'diff= %5.2f, i = %3i, %s = %5.2f, p16 = %5.2f, p84 = %5.2f' \
-          % (diff, index, messagem, median_or_mode[index], p16[index], p84[index])
+          % (diff, index, messagem, median_or_mode[index], p84[index84], p16[index16])
 
     print 'fbin = %5.2f' % (fbins[index])
     plt.gca().set_prop_cycle(None)
 
-    index_fbin70, fbinclosest70 = find_nearest(fbins,0.70)
+    index_fbin70, fbinclosest70 = find_nearest(fbins, 0.70)
 
-    tags = [index16, index, index05, index_fbin70]
-    message = ['16perc', 'best', '05perc', 'Sana12']
+    tags = [index05, index16, index, index84, index95, index_fbin70]
+    message = ['05perc', '16perc', 'best', '84perc', '95perc', 'Sana12']
 
     for i, tag in enumerate(tags):
         ax = plt.subplot(111)
         color = next(ax._get_lines.prop_cycler)['color']
         plt.step(bins[tag][:-1], values[tag], where='post', color=color,
-                 label=r'$P_\mathrm{min}$=%5.2f, %s' % (fbins[tag], message[i]))
-        plt.hlines(0.06+((i+1)/100.), p05[tag], p95[tag], color=color)
-        plt.vlines([p16[tag], p84[tag]], 0.055+((i+1)/100.), 0.065+((i+1)/100.), color=color)
-        plt.vlines(median_or_mode[tag], 0.055+((i+1)/100.), 0.065+((i+1)/100.), lw=3, color=color)
+                 label=r'$f_\mathrm{bin}$=%5.2f, %s' % (fbins[tag], message[i]))
+        plt.hlines(0.06 + ((i + 1) / 100.), p05[tag], p95[tag], color=color)
+        plt.vlines([p16[tag], p84[tag]], 0.055 + ((i + 1) / 100.), 0.065 + ((i + 1) / 100.), color=color)
+        plt.vlines(median_or_mode[tag], 0.055 + ((i + 1) / 100.), 0.065 + ((i + 1) / 100.), lw=3, color=color)
 
-    plt.xlim(0, 50)
+    plt.xlim(0, 70)
+    plt.ylim(0, 0.25)
 
     # plt.vlines(mode,0,0.15)
     #
-    plt.vlines(5.6, 0, 0.05, 'k')
+    plt.vlines(observed_sigma, 0, 0.1, 'k')
+    plt.axvspan(observed_sigma - 0.5, observed_sigma + 0.5, ymin=0, ymax=0.4, color='k', alpha=0.5, lw=0)
     # plt.axvspan(5.1, 6.1, ymin=0, ymax=0.1, color='k', alpha=0.5, lw=0)
-    plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+    # plt.axvspan(5.1, 6.1, color='k', alpha=0.5, lw=0)
+
+    plt.xlabel(r'${\sigma_{1D}}$ ($\rm km\,s^{-1}$)')
+    plt.ylabel('Frequency')
 
     plt.legend()
-    plt.show()
+
+    plt.savefig('results/fbin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.pdf')
+    # plt.show()
+
+    ascii.write(np.array([fbins[index], fbins[index05], fbins[index16], fbins[index84], fbins[index95]]),
+                'results/fbin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.dat',
+                names=['best_fbin', '0.05perc_fbin', '0.16perc_fbin', '0.84perc_fbin', '0.95perc_fbin'],
+                overwrite=True)
+
+    return observed_sigma
 
 
-RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
+def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars):
+    for n, observed_dispersion, number_stars in zip(name_cluster, observed_dispersion, number_stars):
+        print '\n Cluster:', n, '\n'
 
-allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(pmin=1.4, pmax=3500,
-                                                                                          Npoints=50,
-                                                                                          bin=0.5, fbin=0.6)
+        RV_errors = np.ones(number_stars) * 1.2
+
+        allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(
+            measured_errors=RV_errors,
+            sample_size=number_stars,
+            pmin=1.4, pmax=3500,
+            Npoints=100,
+            bin=0.5, fbin=0.7)
+
+        find_best_Pmin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, period,
+                       usemode=False)
+
+        allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(
+            measured_errors=RV_errors,
+            sample_size=number_stars,
+            fmin=0.00, fmax=1.,
+            Npoints=200, bin=0.5)
+
+        find_best_fbin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, fbins,
+                       usemode=False)
 
 
-find_best_Pmin(5.6, mode, median, p05, p16, p84, p95, bins, values, period, usemode=False)
+if __name__ == '__main__':
+    name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M17', 'M8', 'NGC6357', 'G333', 'R136']
+    observed_dispersion = [65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
+                           25.32524131575383, 14.999765386529885, 5.5, 30.94, 25.73, 18.04, 25.0]
+    number_stars = [8, 5, 14, 13, 9, 44, 12, 22, 30, 8, 332]
+    # RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6]) # for M17
+    find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars)
 
-# allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(fmin=0.00, fmax=1., Npoints=100,
-#                                                                                  bin=0.5)
+##################### Edit Tim ###############################
+
+# name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M17', 'M8', 'NGC6357', 'G333', 'R136']
+#  observed_dispersion = 5.5#[65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
+#                         #25.32524131575383, 14.999765386529885, 5.5, 30.94, 25.73, 18.04, 25.0]
+#  number_stars = 12#[8, 5, 14, 13, 9, 44, 12, 22, 30, 8, 332]
+#  # RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6]) # for M17
+#  # for n, observed_dispersion, number_stars in zip(name_cluster,observed_dispersion,number_stars):
 #
-# find_best_fbin(mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=False)
-
-# for i in range(len(bins)):
-#     bin_centers = bins[i][:-1] + np.diff(bins[i]) / 2
-#     a, b, c = skewnorm.fit(allSig1D[i],  5, loc=mode[i][0] , scale=1.)
-#     x_interval_for_fit = np.linspace(bins[i][0], bins[i][-1], 10000)
-#     print a, b, c
-#     y_fit = skewnorm.pdf(x_interval_for_fit, a,b,c)
-#     plt.plot(x_interval_for_fit, y_fit, '--')
+#  # print '\n Cluster:', n, '\n'
 #
-# plt.gca().set_prop_cycle(None)
-
-# for i in range(len(bins)):
-#     bin_centers = bins[i][:-1] + np.diff(bins[i]) / 2
-#     z = np.polyfit(bin_centers, values[i],5)
-#     p = np.poly1d(z)
+#  RV_errors = np.ones(number_stars)*1.2
 #
-#     x_interval_for_fit = np.linspace(bins[i][0], bins[i][-1], 10000)
-#     y_fit = p(x_interval_for_fit)
+#  output_name = "myres.pkl"
+#  l_res = []
+#  fbins = np.linspace(0, 1, 10)
+#  for fbin in fbins:
+#      allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(measured_errors=RV_errors,
+#                                                                                                    sample_size=number_stars,
+#                                                                                                    pmin=1.4, pmax=3500,
+#                                                                                                    Npoints=2,
+#                                                                                                    bin=0.5, fbin=0.7)
 #
-#     plt.plot(x_interval_for_fit, y_fit, ':')
-#     print 'max_fit = %5.2f' % (x_interval_for_fit[y_fit == max(y_fit)])
-
-
+#      result = dict()
+#      result['values'] = values
+#      result['bins'] = bins
+#      result['period'] = period
+#      result['fbin'] = fbin
+#      result['mean'] = mean
+#      result['median'] = median
+#      result['mode'] = mode
+#      result['p05'] = p05
+#      result['p16'] = p16
+#      result['p84'] = p84
+#      result['p95'] = p95
 #
-# for i in range(len(bins)):
-#     bin_centers = bins[i][:-1] + np.diff(bins[i]) / 2
+#      l_res.append(result)
+#  with open(output_name, "w") as f:
+#      pickle.dump(l_res, f)
+#  if os.path.exists(output_name):
+#      print "{output_name} created.".format(output_name=output_name)
 #
-#     popt, _ = curve_fit(gaussian, bin_centers, values[i], p0=[mode[i][0], 0., 1.])
-#
-#     x_interval_for_fit = np.linspace(bins[i][0], bins[i][-1], 10000)
-#     y_fit = gaussian(x_interval_for_fit, *popt)
-#     # plt.plot(x_interval_for_fit, y_fit)
-#     # print 'max_fit = %5.2f' % (x_interval_for_fit[y_fit == max(y_fit)])
-#
-# plt.gca().set_prop_cycle(None)
+#      # find_best_Pmin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, period,
+#      #                usemode=False)
+#      #
+#      # allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(
+#      #     measured_errors=RV_errors,
+#      #     sample_size=number_stars,
+#      #     fmin=0.00, fmax=1.,
+#      #     Npoints=200, bin=0.5)
+#      #
+#      # find_best_fbin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, fbins,
+#      #                usemode=False)
