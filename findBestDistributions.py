@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import main_RVMC as RVMC
 from astropy.io import ascii
-import pickle
+import glob
+import time
 import os
 from scipy.stats import skewnorm
+import pickle
 
 from scipy.optimize import curve_fit
 
@@ -26,7 +28,8 @@ def create_sig1D_distribution(measured_errors=np.zeros(12), number_of_samples=10
     return sig1D
 
 
-def get_Pdistr_stats(measured_errors=np.zeros(12), sample_size=12, pmin=1.4, pmax=3300, Npoints=5, bin=0.5, fbin=0.7):
+def get_Pdistr_stats(measured_errors=np.zeros(12), sample_size=12, pmin=1.4, pmax=3300, Npoints=5, bin=0.5,
+                     fbin=0.7, min_mass=6, max_mass=20):
     allSig1D, mode, mean, median, Allvalues, Allbins, p05, p16, p84, p95, periods = \
         [], [], [], [], [], [], [], [], [], [], []
 
@@ -35,7 +38,7 @@ def get_Pdistr_stats(measured_errors=np.zeros(12), sample_size=12, pmin=1.4, pma
               'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, period)
 
         sig1D = create_sig1D_distribution(measured_errors=measured_errors, sample_size=sample_size,
-                                          min_period=period, binary_fraction=fbin)
+                                          min_period=period, binary_fraction=fbin, min_mass=min_mass, max_mass=max_mass)
 
         values, bins, patches = plt.hist(sig1D, histtype="step", bins=np.arange(0, max(sig1D) + bin, bin),
                                          density=True, label=r'$P_{min}=$ %5.2f' % (period))
@@ -65,7 +68,7 @@ def get_Pdistr_stats(measured_errors=np.zeros(12), sample_size=12, pmin=1.4, pma
 
 
 def get_fbinDist_stats(measured_errors=np.zeros(12), sample_size=12, fmin=0., fmax=1., Npoints=100, bin=0.5,
-                       min_period=1.4):
+                       min_period=1.4, min_mass=6, max_mass=20):
     allSig1D, mode, mean, median, Allvalues, Allbins, p05, p16, p84, p95, fbins = \
         [], [], [], [], [], [], [], [], [], [], []
     for fbin in np.linspace(fmin, fmax, Npoints):  #
@@ -73,7 +76,8 @@ def get_fbinDist_stats(measured_errors=np.zeros(12), sample_size=12, fmin=0., fm
               'Calulating distribution for fbin = %5.2f and Pmin = %5.2f' % (fbin, min_period)
 
         sig1D = create_sig1D_distribution(sample_size=sample_size, measured_errors=measured_errors,
-                                          min_period=min_period, binary_fraction=fbin)
+                                          min_period=min_period, binary_fraction=fbin, min_mass=min_mass,
+                                          max_mass=max_mass)
 
         values, bins, patches = plt.hist(sig1D, histtype="step", bins=np.arange(0, max(sig1D) + bin, bin),
                                          density=True, label=r'$f_{bin}=$ %5.2f' % (fbin))
@@ -116,7 +120,8 @@ def func(x, a, b, c):
     return a + (b * x) + (c * x * x) + (x * x * x)
 
 
-def find_best_Pmin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95, bins, values, period, usemode=False):
+def find_best_Pmin(observed_sigma, min_mass, max_mass, sample_size, mode, median, p05, p16, p84, p95, bins, values,
+                   period, usemode=False):
     diff, diff05, diff16, diff84, diff95 = 100, 100, 100, 100, 100
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
@@ -181,16 +186,19 @@ def find_best_Pmin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95
     plt.ylabel('Frequency')
 
     plt.legend()
-    plt.savefig('results/Pmin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.pdf')
+    plt.savefig('results/Pmin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) +
+                '_Mass_' + str(min_mass) + '_' + str(max_mass) + '.pdf')
 
     # plt.show()
     ascii.write(np.array([period[index], period[index05], period[index16], period[index84], period[index95]]),
-                'results/Pmin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.dat',
+                'results/Pmin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) +
+                '_Mass_' + str(min_mass) + '_' + str(max_mass) + '.dat',
                 names=['best_Pmin', '0.05perc_Pmin', '0.16perc_Pmin', '0.84perc_Pmin', '0.95perc_Pmin'],
                 overwrite=True)
 
 
-def find_best_fbin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95, bins, values, fbins, usemode=False):
+def find_best_fbin(observed_sigma, min_mass, max_mass, sample_size, mode, median, p05, p16, p84, p95, bins, values,
+                   fbins, usemode=False):
     diff, diff05, diff16, diff84, diff95 = 100, 100, 100, 100, 100
     index, index05, index16, index84, index95 = 0, 0, 0, 0, 0
     if usemode == True:
@@ -257,101 +265,152 @@ def find_best_fbin(observed_sigma, sample_size, mode, median, p05, p16, p84, p95
 
     plt.legend()
 
-    plt.savefig('results/fbin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.pdf')
+    plt.savefig('results/fbin_hist_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) +
+                '_Mass_' + str(min_mass) + '_' + str(max_mass) + '.pdf')
     # plt.show()
 
     ascii.write(np.array([fbins[index], fbins[index05], fbins[index16], fbins[index84], fbins[index95]]),
-                'results/fbin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) + '.dat',
+                'results/fbin_ObsSig_' + str(observed_sigma) + '_Nstars_' + str(sample_size) +
+                '_Mass_' + str(min_mass) + '_' + str(max_mass) + '.dat',
                 names=['best_fbin', '0.05perc_fbin', '0.16perc_fbin', '0.84perc_fbin', '0.95perc_fbin'],
                 overwrite=True)
 
     return observed_sigma
 
 
-def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars):
-    for n, observed_dispersion, number_stars in zip(name_cluster, observed_dispersion, number_stars):
+def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars, min_mass, max_mass):
+
+    for n, observed_dispersion, number_stars, min_mass, max_mass in\
+            zip(name_cluster, observed_dispersion, number_stars, min_mass, max_mass):
+
         print '\n Cluster:', n, '\n'
 
-        RV_errors = np.ones(number_stars) * 1.2
+        if n == 'M17':
+            RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])  # for M17
+        else:
+            RV_errors = np.ones(number_stars) * 1.2
 
         allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(
             measured_errors=RV_errors,
             sample_size=number_stars,
             pmin=1.4, pmax=3500,
             Npoints=100,
-            bin=0.5, fbin=0.7)
+            bin=0.5, fbin=0.7, min_mass=min_mass, max_mass=max_mass)
 
-        find_best_Pmin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, period,
-                       usemode=False)
+        find_best_Pmin(observed_dispersion,  min_mass, max_mass, number_stars, mode, median,
+                       p05, p16, p84, p95, bins, values, period, usemode=False)
 
         allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(
             measured_errors=RV_errors,
             sample_size=number_stars,
             fmin=0.00, fmax=1.,
-            Npoints=200, bin=0.5)
+            Npoints=200, bin=0.5, min_mass=min_mass, max_mass=max_mass)
 
-        find_best_fbin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, fbins,
-                       usemode=False)
+        find_best_fbin(observed_dispersion, min_mass, max_mass, number_stars, mode, median,
+                       p05, p16, p84, p95, bins, values, fbins, usemode=False)
 
+
+def plot_Pmin_vs_age():
+    Pmin_filelist = glob.glob('results/Pmin_ObsSig_*_Nstars_*.dat')
+    Pmin = [ascii.read(f)['best_Pmin'] for f in Pmin_filelist]
+    Pmin016 = [ascii.read(f)['0.16perc_Pmin'] for f in Pmin_filelist]
+    Pmin084 = [ascii.read(f)['0.84perc_Pmin'] for f in Pmin_filelist]
+
+    sig1D_fromfilename = np.array([float(f.split('ObsSig_')[1].split('_Nstars')[0]) for f in Pmin_filelist])
+    sig1D_fromdata = ascii.read('data_RT20/weighted_RVdisp_vs_age.txt', delimiter=';')['sig1D']
+    age_fromdata = ascii.read('data_RT20/weighted_RVdisp_vs_age.txt', delimiter=';')['age']
+    age_err_fromdata = ascii.read('data_RT20/weighted_RVdisp_vs_age.txt', delimiter=';')['age_err']
+    name_fromdata = ascii.read('data_RT20/weighted_RVdisp_vs_age.txt', delimiter=';')['name']
+
+    age_sorted = []
+    age_err_sorted = []
+    sig1D_sorted = []
+    Pmin_sorted = []
+    Pmin016_sorted = []
+    Pmin084_sorted = []
+    name_sorted = []
+    for i in range(len(sig1D_fromfilename)):
+        for j in range(len(sig1D_fromdata)):
+            if round(sig1D_fromfilename[i], 2) == round(sig1D_fromdata[j], 2):
+                name_sorted.append(name_fromdata[j])
+                age_sorted.append(age_fromdata[j])
+                age_err_sorted.append(age_err_fromdata[j])
+                sig1D_sorted.append(sig1D_fromdata[j])
+                Pmin_sorted.append(Pmin[i].data[0])
+                Pmin016_sorted.append(Pmin016[i].data[0])
+                Pmin084_sorted.append(Pmin084[i].data[0])
+
+    age_sorted = np.array(age_sorted)
+    age_err_sorted = np.array(age_err_sorted)
+    sig1D_sorted = np.array(sig1D_sorted)
+    Pmin_sorted = np.array(Pmin_sorted)
+    Pmin016_sorted = np.array(Pmin016_sorted)
+    Pmin084_sorted = np.array(Pmin084_sorted)
+
+    Pmin_errs = [Pmin_sorted - Pmin016_sorted, Pmin084_sorted - Pmin_sorted]
+
+    plt.errorbar(age_sorted, Pmin_sorted, xerr=age_err_sorted,
+                 yerr=Pmin_errs, fmt='o')
+
+    for n, x, y in zip(name_sorted, age_sorted, Pmin_sorted):
+        plt.annotate(n, xy=(x, y))
+
+    plt.yscale('log')
+    plt.ylim(4000, 1)
+    plt.xlabel('age (Myr)')
+    plt.ylabel(r'$\rm{P_{min}}$ (log days)')
+    plt.show()
+
+def run_bigGrid(number_stars = 20, min_mass=6, max_mass=20):
+
+    output_name = "results/grid_Pmin_fbin_Nstars_{}_Mass_{}_{}.pkl".format(number_stars, min_mass, max_mass)
+    l_res = []
+    fbins = np.linspace(0, 1, 100)
+
+    RV_errors = np.ones(number_stars) * 1.2
+
+    for fbin in fbins:
+        allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(
+            measured_errors=RV_errors,
+            sample_size=number_stars,
+            pmin=1.4, pmax=3500,
+            Npoints=100,
+            bin=0.5, fbin=fbin, min_mass=min_mass, max_mass=max_mass)
+
+        result = dict()
+        result['values'] = values
+        result['bins'] = bins
+        result['period'] = period
+        result['fbin'] = fbin
+        result['mean'] = mean
+        result['median'] = median
+        result['mode'] = mode
+        result['p05'] = p05
+        result['p16'] = p16
+        result['p84'] = p84
+        result['p95'] = p95
+
+        l_res.append(result)
+    with open(output_name, "w") as f:
+        pickle.dump(l_res, f)
+    if os.path.exists(output_name):
+        print "{output_name} created.".format(output_name=output_name)
 
 if __name__ == '__main__':
-    name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M17', 'M8', 'NGC6357', 'G333', 'R136']
+    name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M8', 'NGC6357', 'G333', 'R136', 'M17']
     observed_dispersion = [65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
-                           25.32524131575383, 14.999765386529885, 5.5, 30.94, 25.73, 18.04, 25.0]
-    number_stars = [8, 5, 14, 13, 9, 44, 12, 22, 30, 8, 332]
-    # RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6]) # for M17
-    find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars)
+                           25.32524131575383, 14.999765386529885, 30.94, 25.73, 18.04, 25.0, 5.5]
+    number_stars = [8, 5, 14, 13, 9, 44, 22, 30, 8, 332, 12]
+    min_masses = [15, 15, 15, 15, 15, 6, 6, 6, 6, 15, 6]
+    max_masses = [60, 60, 60, 60, 60, 60, 20, 20, 20, 60, 20]
 
-##################### Edit Tim ###############################
+    # find_Pmin_fbin_individual_clulsters(name_cluster[6:9], observed_dispersion[6:9], number_stars[6:9],
+    #                                     min_masses[6:9], max_masses[6:9])
 
-# name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M17', 'M8', 'NGC6357', 'G333', 'R136']
-#  observed_dispersion = 5.5#[65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
-#                         #25.32524131575383, 14.999765386529885, 5.5, 30.94, 25.73, 18.04, 25.0]
-#  number_stars = 12#[8, 5, 14, 13, 9, 44, 12, 22, 30, 8, 332]
-#  # RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6]) # for M17
-#  # for n, observed_dispersion, number_stars in zip(name_cluster,observed_dispersion,number_stars):
-#
-#  # print '\n Cluster:', n, '\n'
-#
-#  RV_errors = np.ones(number_stars)*1.2
-#
-#  output_name = "myres.pkl"
-#  l_res = []
-#  fbins = np.linspace(0, 1, 10)
-#  for fbin in fbins:
-#      allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, period = get_Pdistr_stats(measured_errors=RV_errors,
-#                                                                                                    sample_size=number_stars,
-#                                                                                                    pmin=1.4, pmax=3500,
-#                                                                                                    Npoints=2,
-#                                                                                                    bin=0.5, fbin=0.7)
-#
-#      result = dict()
-#      result['values'] = values
-#      result['bins'] = bins
-#      result['period'] = period
-#      result['fbin'] = fbin
-#      result['mean'] = mean
-#      result['median'] = median
-#      result['mode'] = mode
-#      result['p05'] = p05
-#      result['p16'] = p16
-#      result['p84'] = p84
-#      result['p95'] = p95
-#
-#      l_res.append(result)
-#  with open(output_name, "w") as f:
-#      pickle.dump(l_res, f)
-#  if os.path.exists(output_name):
-#      print "{output_name} created.".format(output_name=output_name)
-#
-#      # find_best_Pmin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, period,
-#      #                usemode=False)
-#      #
-#      # allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(
-#      #     measured_errors=RV_errors,
-#      #     sample_size=number_stars,
-#      #     fmin=0.00, fmax=1.,
-#      #     Npoints=200, bin=0.5)
-#      #
-#      # find_best_fbin(observed_dispersion, number_stars, mode, median, p05, p16, p84, p95, bins, values, fbins,
-#      #                usemode=False)
+    plot_Pmin_vs_age()
+
+    # start = time.time()
+    # run_bigGrid(number_stars=20, min_mass=15, max_mass=60)
+    # print "It took %.3g seconds" % (time.time() - start)
+
+
