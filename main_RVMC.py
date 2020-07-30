@@ -105,7 +105,7 @@ def find_eccentric_anomaly(eccentricity, time, period):
     """
     eccentric_anomaly = np.zeros(len(time))
     for i in range(len(time)):
-        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-6)
+        eccentric_anomaly[i] = brentq(anomaly, 0, np.pi * 2, args=(eccentricity[i], time[i], period[i]), xtol=10**-2)
     return eccentric_anomaly
 
 
@@ -962,14 +962,14 @@ def check_vt():
 
 if __name__ == '__main__':
     # simple_std_plot_bigSample()
-    # plot_dists(*initialize_parameters(), cumulative=True)
+    plot_dists(*initialize_parameters(), cumulative=True)
     # find_best_period()
 
     # simple_std_plot_bigSample(measured_errors=RV_errors, min_mass=6)
     # test_distributions()
     # check_max_orbital_velocities()
     # check_vt()
-    compare_mc_numerical()
+    # compare_mc_numerical()
 
 
     # old = synthetic_RV_distribution()
