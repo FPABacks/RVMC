@@ -7,8 +7,7 @@ import time
 import os
 from scipy.stats import skewnorm
 import pickle
-
-from scipy.optimize import curve_fit
+from scipy import odr
 
 # This comand is to open plots in the second display
 plt.switch_backend('QT4Agg')
@@ -279,8 +278,7 @@ def find_best_fbin(observed_sigma, min_mass, max_mass, sample_size, mode, median
 
 
 def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, number_stars, min_mass, max_mass):
-
-    for n, observed_dispersion, number_stars, min_mass, max_mass in\
+    for n, observed_dispersion, number_stars, min_mass, max_mass in \
             zip(name_cluster, observed_dispersion, number_stars, min_mass, max_mass):
 
         print '\n Cluster:', n, '\n'
@@ -297,7 +295,7 @@ def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, numbe
             Npoints=100,
             bin=0.5, fbin=0.7, min_mass=min_mass, max_mass=max_mass)
 
-        find_best_Pmin(observed_dispersion,  min_mass, max_mass, number_stars, mode, median,
+        find_best_Pmin(observed_dispersion, min_mass, max_mass, number_stars, mode, median,
                        p05, p16, p84, p95, bins, values, period, usemode=False)
 
         allSig1D, mode, mean, median, values, bins, p05, p16, p84, p95, fbins = get_fbinDist_stats(
@@ -310,7 +308,22 @@ def find_Pmin_fbin_individual_clulsters(name_cluster, observed_dispersion, numbe
                        p05, p16, p84, p95, bins, values, fbins, usemode=False)
 
 
-def plot_Pmin_vs_age():
+def exp_func(p, x):
+    a, b = p
+    y = a * np.exp(b * x) + c
+    return y
+
+
+def quad_func(p, x):
+    a, b, c = p
+    return a * np.exp(- x / b) + c
+    # return (a * x) + b
+
+
+def plot_Pmin_vs_age(fit=False):
+    import matplotlib as mpl
+    mpl.rc('font', family='Serif')
+
     Pmin_filelist = glob.glob('results/Pmin_ObsSig_*_Nstars_*.dat')
     Pmin = [ascii.read(f)['best_Pmin'] for f in Pmin_filelist]
     Pmin016 = [ascii.read(f)['0.16perc_Pmin'] for f in Pmin_filelist]
@@ -349,20 +362,94 @@ def plot_Pmin_vs_age():
 
     Pmin_errs = [Pmin_sorted - Pmin016_sorted, Pmin084_sorted - Pmin_sorted]
 
-    plt.errorbar(age_sorted, Pmin_sorted, xerr=age_err_sorted,
-                 yerr=Pmin_errs, fmt='o')
+    ascii.write([name_sorted, age_sorted, age_err_sorted, Pmin_sorted, Pmin_errs[0], Pmin_errs[1]],
+                'll',
+                names=['name', 'age', 'age_err', 'Pmin', 'Pmin_min', 'Pmin_plus'])
 
-    for n, x, y in zip(name_sorted, age_sorted, Pmin_sorted):
-        plt.annotate(n, xy=(x, y))
+    fig = plt.figure(figsize=(4, 4))
+
+    if fit == True:
+        Pmin_errs_fit = np.abs(Pmin_errs[0] - Pmin_errs[1])
+        realdata = odr.RealData(np.array(age_sorted), np.array(Pmin_sorted), sx=np.array(age_err_sorted),
+                                sy=np.array(Pmin_errs_fit))
+
+        data = odr.Data(age_sorted, Pmin_sorted)
+        # Create a model for fitting.
+        quad_model = odr.Model(quad_func)
+        odr_obj = odr.ODR(realdata, quad_model, beta0=[1e5, 0.2, 1.3], ifixb=[0., 1., 1.])  # beta0=[1., 1., 1.])  #
+        out = odr_obj.run()
+        popt = out.beta
+        perr = out.sd_beta
+
+        odr_obj1 = odr.ODR(realdata, quad_model, beta0=[1e4, 0.2, 1.3], ifixb=[0., 1., 1.])  # beta0=[1., 1., 1.])  #
+        out1 = odr_obj1.run()
+        popt1 = out1.beta
+        perr1 = out1.sd_beta
+
+        odr_obj2 = odr.ODR(realdata, quad_model, beta0=[1e6, 0.2, 1.3], ifixb=[0., 1., 1.])  # beta0=[1., 1., 1.])  #
+        out2 = odr_obj2.run()
+        popt2 = out2.beta
+        perr2 = out2.sd_beta
+
+        # prepare confidence level curves
+        nstd = 1.  # to draw 5-sigma intervals
+        popt_up = popt + nstd * np.array([0, 0.0394, 0.0713])  # perr
+        popt_dw = popt - nstd * np.array([0, 0.0689, 0.038])  # perr
+        # popt_dw[0] = popt_dw[0]*-1.
+
+        print out.beta, out.sd_beta
+        # print popt_dw, popt_up
+
+        x_fit = np.linspace(0., 6, 1000)
+        # y_fit1 = 1.9e+05*np.exp(x_fit * -5.4) + 1.4
+        y_fit = quad_func(out.beta, x_fit)
+        fit_up = quad_func(popt_up, x_fit)
+        fit_dw = quad_func(popt_dw, x_fit)
+
+        y_fit1 = quad_func(out1.beta, x_fit)
+        y_fit2 = quad_func(out2.beta, x_fit)
+
+        print out.beta, out1.beta, out2.beta, '\n', '\n', out.beta - out1.beta, -out.beta + out2.beta
+
+        plt.plot(x_fit[y_fit < 1e4], y_fit[y_fit < 1e4], '#1f77b4',
+                 label=r'$\mathrm{P_{min}}$' + '(t)=$10^{(5\pm1)}$' +
+                       '$exp({-t/({%.2f}_{-%.2f}^{+%.2f})}) + (%.2f_{%.2f}^{+%.2f})$' % (round(out.beta[1], 2),
+                                                                                round(out.beta[1]-out2.beta[1], 2),
+                                                                                round(out1.beta[1] - out.beta[1], 2),
+                                                                                round(out.beta[2], 2),
+                                                                                round(out1.beta[2] - out.beta[2], 2),
+                                                                                round(out2.beta[2] - out.beta[2], 2)))
+
+        # plt.plot(x_fit, fit_up, 'r')
+        # plt.plot(x_fit, fit_dw, 'r')
+        plt.fill_between(x_fit, fit_up, fit_dw, alpha=.25)
+        # plt.fill_between(x_fit, y_fit1, y_fit2, alpha=.25)
+        # plt.plot(x_fit, y_fit1, 'r')
+
+    plt.errorbar(age_sorted, Pmin_sorted, xerr=age_err_sorted,
+                 yerr=Pmin_errs, fmt='.', color='grey', linewidth=2)
+
+    for n, x, y, xer, yer1, yer2 in zip(name_sorted, age_sorted, Pmin_sorted, age_err_sorted, Pmin_errs[0],
+                                        Pmin_errs[1]):
+        if n == 'NGC6357':
+            plt.annotate(n, xy=(x - 1.7, y + 0.1), color='k', fontsize=9)
+        elif n == 'IC1848':
+            plt.annotate(n, xy=(x, y + 2), color='k', fontsize=9, rotation=45)
+        else:
+            plt.annotate(n, xy=(x, y + 0.1), color='k', fontsize=9)
 
     plt.yscale('log')
-    plt.ylim(4000, 1)
+    plt.ylim(1, 3e4)
+    # plt.xlim(-0.5, 8)
     plt.xlabel('age (Myr)')
     plt.ylabel(r'$\rm{P_{min}}$ (log days)')
+    plt.legend(fontsize=8.6, loc=1)
+    fig.savefig('/Users/ramirez/Dropbox/KMOS/papers/KMOS_paperII/figures/Pcutoff_vs_age_fixP0.pdf', bbox_inches='tight')
+    # fig.savefig('results/Pcutoff_vs_age.pdf', bbox_inches='tight')
     plt.show()
 
-def run_bigGrid(number_stars = 20, min_mass=6, max_mass=20):
 
+def run_bigGrid(number_stars=20, min_mass=6, max_mass=20):
     output_name = "results/grid_Pmin_fbin_Nstars_{}_Mass_{}_{}.pkl".format(number_stars, min_mass, max_mass)
     l_res = []
     fbins = np.linspace(0, 1, 100)
@@ -396,21 +483,39 @@ def run_bigGrid(number_stars = 20, min_mass=6, max_mass=20):
     if os.path.exists(output_name):
         print "{output_name} created.".format(output_name=output_name)
 
+
 if __name__ == '__main__':
-    name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M8', 'NGC6357', 'G333', 'R136', 'M17']
+    name_cluster = ['IC1805', 'IC1848', 'IC2944', 'NGC6231', 'NGC6611', 'Wd2', 'M8', 'NGC6357', 'R136',
+                    'M17']  # 'G333',
+    # observed_dispersion = [65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
+    #                        25.32524131575383, 14.999765386529885, 30.94, 25.73, 18.04, 25.0, 5.5]
+    # number_stars = [8, 5, 14, 13, 9, 44, 22, 30, 8, 332, 12]
+    # min_masses = [15, 15, 15, 15, 15, 6, 6, 6, 6, 15, 6]
+    # max_masses = [60, 60, 60, 60, 60, 60, 20, 20, 20, 60, 20]
     observed_dispersion = [65.45329203402903, 50.26275741127991, 31.357122212648363, 67.61903406110999,
-                           25.32524131575383, 14.999765386529885, 30.94, 25.73, 18.04, 25.0, 5.5]
-    number_stars = [8, 5, 14, 13, 9, 44, 22, 30, 8, 332, 12]
-    min_masses = [15, 15, 15, 15, 15, 6, 6, 6, 6, 15, 6]
-    max_masses = [60, 60, 60, 60, 60, 60, 20, 20, 20, 60, 20]
+                           25.32524131575383, 14.999765386529885, 32.69110237188463, 26.850667796133674,
+                           25.0, 5.5]  # 5.56089079139046,
+    number_stars = [8, 5, 14, 13, 9, 44, 16, 22, 332, 12]  # 4,
+    min_masses = [20, 15, 15, 15, 15, 6, 6, 6, 15, 6]  # 13,
+    max_masses = [60, 60, 60, 60, 60, 60, 20, 30, 60, 20]  # 30,
 
-    # find_Pmin_fbin_individual_clulsters(name_cluster[6:9], observed_dispersion[6:9], number_stars[6:9],
-    #                                     min_masses[6:9], max_masses[6:9])
+    refs = ['\citet{2017ApJS..230....3S}', '\citet{2014MNRAS.438.1451L}', '\citet{2014MNRAS.443..411B}',
+            '\citet{2013AJ....145...37S}', '\citet{2008AA...490.1071G}', '\citet{2018AJ....156..211Z}',
+            '\citetalias{2020AA...633A.155R}', '\citetalias{2020AA...633A.155R}', '\citet{2012AA...546A..73H}',
+            '\citet{paper1}']
 
-    plot_Pmin_vs_age()
+    # ascii.write([name_cluster, observed_dispersion, number_stars, min_masses, max_masses, refs],
+    #             'data_RT20/Nstars_massRange.txt',
+    #             names=['name', 'sigma', 'Nstars', 'minMass', 'maxMass', 'refs'])
 
-    # start = time.time()
-    # run_bigGrid(number_stars=20, min_mass=15, max_mass=60)
-    # print "It took %.3g seconds" % (time.time() - start)
+    # print name_cluster[0:4]
+    # find_Pmin_fbin_individual_clulsters(name_cluster[0:1], observed_dispersion[0:1], number_stars[0:1],
+    #                                     min_masses[0:1], max_masses[0:1])
+    plot_Pmin_vs_age(fit=True)
 
-
+    # n, minmass, maxmass = number_stars[0], min_masses[0], max_masses[0]
+    # for n, minmass, maxmass in zip(number_stars, min_masses, max_masses):
+    #     print n, minmass, maxmass
+    #     start = time.time()
+    #     run_bigGrid(number_stars=n, min_mass=minmass, max_mass=maxmass)
+    #     print "It took %.3g seconds" % (time.time() - start)
