@@ -6,8 +6,7 @@ By Frank Backs (frank.backs@kuleuven.be)
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.constants import G
-from scipy.optimize import newton, brentq
-from scipy import stats
+from scipy.optimize import newton
 
 
 def anomaly_function(E, e, M):
