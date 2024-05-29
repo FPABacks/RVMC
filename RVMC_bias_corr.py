@@ -1,6 +1,6 @@
 """
 Script for simulating radial velocity measurements of stars.
-By Frank Backs (f.p.a.backs@uva.nl)
+By Frank Backs (frank.backs@kuleuven.be)
 """
 import numpy as np
 from astropy.constants import G
