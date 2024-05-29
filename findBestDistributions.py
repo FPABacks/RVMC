@@ -1,3 +1,8 @@
+# NOTE THIS FILE IS OUTDATED!
+# IT DOES NOT WORK WITH CURRENT VERSIONS
+# (IT ALSO USES PYTHON 2)
+# JUST LEFT IT IN CASE IT CAN BE USED TO INSPIRE THE NEW SCRIPT
+
 import matplotlib.pyplot as plt
 import numpy as np
 import main_RVMC as RVMC

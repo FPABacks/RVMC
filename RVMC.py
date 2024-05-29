@@ -1,21 +1,24 @@
+"""
+Script for simulating radial velocity measurements of clusters of stars.
+By Frank Backs (f.p.a.backs@uva.nl)
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.constants import G
-from scipy.optimize import brentq
+from scipy.optimize import newton, brentq
 from scipy import stats
-import matplotlib.ticker
 
 
-def anomaly_function(E, e, t, P):
+def anomaly_function(E, e, M):
     """
     The equation to solve to obtain the eccentric anomaly.
     :param E:   The eccentric anomaly
     :param e:   The eccentricity
-    :param t:   The time in the orbit
-    :param P:   The period of the binary
+    :param M:   The mean anomaly /the time in the orbit times 2 * pi divided by the period
     :return:
     """
-    return E - e * np.sin(E) - t * 2 * np.pi / P
+    return E - e * np.sin(E) - M
 
 
 class RVMC:
@@ -23,46 +26,71 @@ class RVMC:
     A tool for randomly generating radial velocity distributions of binary and single stars in clusters
     """
 
-    def __init__(self, number_of_stars=10**5, min_mass=6, max_mass=20, min_period=10.**0.15, max_period=10.**3.5,
-                 mass_dist=None, period_dist=None, sigma_dyn=2.0, numerical_orbits=False, fbin=0.7):
+    def __init__(self,
+                 number_of_stars=10**5,
+                 min_mass=6.,
+                 max_mass=20.,
+                 min_period=10.**0.15,
+                 max_period=10.**3.5,
+                 period_pi: float = -0.5,
+                 mass_ratio_kappa: float = 0,
+                 mass_power: float = -2.35,
+                 min_q: float = 0.1,
+                 max_q: float = 1.0,
+                 e_power: float = -0.5,
+                 mass_dist=None,
+                 period_dist=None,
+                 sigma_dyn=2.0,
+                 fbin=0.7):
         """
         Initialize the properties of the single and binary stars in the sample. Note that mass_dist and period_dist
         should be supplied in SI units and that the size must be equal to int(number_of_stars * fbin)
-        :param number_of_stars:
-        :param min_mass:
-        :param max_mass:
-        :param min_period:
-        :param max_period:
-        :param mass_dist:
-        :param period_dist:
-        :param fbin:
-        :param sigma_dyn:
+        :param number_of_stars: Number of stars (default=10**5)
+        :param min_mass:        Lowest mass of the stars in the cluster in solar masses (default=6)
+        :param max_mass:        Highest mass of star in the cluseter in solar masses (default=20)
+        :param min_period:      Shortest period of binaries in the cluster in days (default=10**0.15)
+        :param max_period:      Longest period of binaries in the cluster in days (default=10**3.5)
+        :param period_pi:       Power of the powerlaw sampling of the periods (of log(P)**pi in days)
+        :param mass_ratio_kappa Power of the mass ratio sampling
+        :param mass_power:      Power of the mass sampling (default -2.35, i.e. Kroupa)
+        :param min_q:           Minimum mass ratio
+        :param max_q:           Maximum mass ratio
+        :param e_power:         Power of the eccentricity sampling power law.
+        :param mass_dist:       An alternative mass distribution of the stars in the cluster in kg (default=None)
+        :param period_dist:     An alternative period distribution of the stars in the cluster in seconds (default=None)
+        :param fbin:            Binary fraction of the stars in the cluster (default=0.7)
+        :param sigma_dyn:       Standard deviation of velocities due to cluster dynamics in km/s (default=2.)
+
         """
         self.fbin = fbin
-        # self.number_of_stars = number_of_stars
         self.min_mass = min_mass
         self.max_mass = max_mass
         self.min_period = min_period
         self.max_period = max_period
         self.sigma_dyn = sigma_dyn
-        self.numerical_orbits = numerical_orbits
         self.number_of_stars = number_of_stars
 
-        if not numerical_orbits:
-            if type(mass_dist) == type(None):
-                self.primary_mass = self.sample_masses()
-            else:
-                self.primary_mass = mass_dist
+        self.period_pi = period_pi
+        self.mass_ratio_kappa = mass_ratio_kappa
+        self.mass_power = mass_power
+        self.min_q = min_q
+        self.max_q = max_q
+        self.e_power = e_power
 
-            if type(period_dist) == type(None):
-                self.period = self.sample_period()
-            else:
-                self.period = period_dist
+        if type(mass_dist) == type(None):
+            self.primary_mass = self.sample_masses()
+        else:
+            self.primary_mass = mass_dist
 
-            self.time = self.sample_time()
-            self.mass_ratio = self.sample_mass_ratio()
-            self.eccentricity = self.sample_eccentricity()
-            self.eccentric_anomaly = self.calculate_eccentric_anomaly()
+        if type(period_dist) == type(None):
+            self.period = self.sample_period()
+        else:
+            self.period = period_dist
+
+        self.time = self.sample_time()
+        self.mass_ratio = self.sample_mass_ratio()
+        self.eccentricity = self.sample_eccentricity()
+        self.eccentric_anomaly = self.calculate_eccentric_anomaly()
 
         self.inclination = self.sample_inclination()
         self.orbit_rotation = self.sample_orbit_rotation()
@@ -72,6 +100,17 @@ class RVMC:
         self.sigma_1d = None
 
         self.cluster_velocities = np.random.normal(0.0, self.sigma_dyn, size=self.number_of_stars)
+
+    def sample_powerlaw(self, min_val, max_val, power, size=None):
+        """
+        Samples a powerlaw between the min_val, max_val with power distribution power.
+        :return:
+        """
+        if size is None:
+            size = self.number_of_stars
+        pmax = (max_val / min_val)**(power + 1)
+        p = np.random.uniform(pmax, 1, size=size)
+        return p**(1. / (power + 1)) * min_val
 
     def sample_inclination(self):
         """
@@ -85,28 +124,21 @@ class RVMC:
         Returns an array of primary masses sample from a kroupa distribution in kg
         :return:
         """
-        a = 2.3
-        # CDF sampling of the IMF powerlaw
-        pmin = (self.min_mass / self.min_mass) ** (-a + 1)
-        pmax = (self.max_mass / self.min_mass) ** (-a + 1)
-        p = np.random.uniform(pmax, pmin, size=self.number_of_stars)
-        primary_mass = p ** (1. / (-a + 1)) * self.min_mass * 2e30
-        return primary_mass
+        return self.sample_powerlaw(self.min_mass, self.max_mass, self.mass_power) * 2.e30
 
     def sample_period(self):
         """
         Returns a distribution of periods in seconds
-        Distribution described by pdf ~ log(P)**0.5 with 0.15 < log(P) < 3.5 with P in days
+        Distribution described by pdf ~ log(P)**-0.5 with 0.15 < log(P) < 3.5 with P in days
         :return:
         """
-        return 10 ** (np.random.uniform(np.log10(self.min_period) ** 0.5, np.log10(self.max_period) ** 0.5,
-                                        self.number_of_stars) ** 2) * 24 * 3600
+        return 24 * 3600 * 10**self.sample_powerlaw(np.log10(self.min_period), np.log10(self.max_period), self.period_pi)
 
     def sample_mass_ratio(self):
         """
         Returns an array of mass ratios
         """
-        return np.random.uniform(0.1, 1., self.number_of_stars)
+        return self.sample_powerlaw(self.min_q, self.max_q, self.mass_ratio_kappa)
 
     def sample_orbit_rotation(self):
         """
@@ -122,10 +154,11 @@ class RVMC:
         for periods > 6 days e < 0.9
         """
         eccentricity = np.zeros(self.number_of_stars)
-        index6d = (self.period > (4 * 24 * 3600)) & (self.period < (6 * 24 * 3600))
-        index_rest = self.period > (6 * 24 * 3600)
-        eccentricity[index6d] = np.random.uniform(0 ** 0.5, 0.5 ** 0.5, np.sum(index6d)) ** 2
-        eccentricity[index_rest] = (np.random.uniform(0 ** 0.5, 0.9 ** 0.5, np.sum(index_rest)) ** 2)
+        more_than_6 = self.period > (6 * 24 * 3600)
+        between_4_and_6 = (self.period > (4 * 24 * 3600)) * np.logical_not(more_than_6)
+        eccentricity[more_than_6] = self.sample_powerlaw(1e-5, 0.9, self.e_power, size=np.sum(more_than_6))
+        eccentricity[between_4_and_6] = self.sample_powerlaw(1e-5, 0.5, self.e_power, size=np.sum(between_4_and_6))
+        # eccentricity = self.sample_powerlaw(1e-5, 0.9, self.e_power) # For testing purposes.
         return eccentricity
 
     def sample_time(self):
@@ -141,12 +174,11 @@ class RVMC:
         is no analytical solution.
         :return:
         """
-        eccentric_anomaly = np.zeros(self.number_of_stars)
-        for i in range(self.number_of_stars):
-            eccentric_anomaly[i] = brentq(anomaly_function, 0, np.pi * 2,
-                                          args=(self.eccentricity[i], self.time[i], self.period[i]),
-                                          xtol=10**-2)
-        return eccentric_anomaly
+        M = np.pi * 2 * self.time / self.period
+        return newton(anomaly_function,
+                      M,
+                      args=(self.eccentricity, M),
+                      tol=10**-6)
 
     def calculate_semi_major_axis(self):
         """
@@ -186,27 +218,9 @@ class RVMC:
         :return:
         """
 
-        if self.numerical_orbits:  # Get velocities from pre-calculated file
-            try:
-                data = np.load("Numerical_RV/radial_velocities.npy")
-            except IOError as err:
-                print err
-                print "Cannot find the file with the binary velocities, did you make it first?"
-                print "You might need to run numerical_2_body.py in Numerical_RV/"
-                exit()
-
-            # number_of_binaries = int(self.number_of_stars * self.fbin)
-            t_steps = np.random.choice(np.arange(data.shape[0]), size=self.number_of_stars, replace=True)
-            stars = np.random.choice(np.arange(data.shape[1]), size=self.number_of_stars, replace=True)
-
-            rv_binary = data[t_steps, stars, 0] * np.cos(self.orbit_rotation) +\
-                        data[t_steps, stars, 1] * np.sin(self.orbit_rotation)
-            rv_binary *= np.sin(self.inclination) * 0.001
-
-        else:
-            semi_major_axes = self.calculate_semi_major_axis()
-            max_orbital_vels = self.max_orbital_velocity(semi_major_axes)
-            rv_binary = self.binary_radial_velocity(max_orbital_vels)
+        semi_major_axes = self.calculate_semi_major_axis()
+        max_orbital_vels = self.max_orbital_velocity(semi_major_axes)
+        rv_binary = self.binary_radial_velocity(max_orbital_vels)
 
         rv_binary += np.random.normal(0.0, self.sigma_dyn, size=self.number_of_stars)
         self.rv_binary = rv_binary
@@ -222,27 +236,42 @@ class RVMC:
         self.radial_velocities[number_of_binaries:] = np.random.choice(self.cluster_velocities,
                                                                        size=self.number_of_stars - number_of_binaries)
 
-    def subsample(self, sample_size=12, measured_errors=1.2, number_of_samples=10**5, fbin=0.7):
+    def subsample(self, sample_size=12, measured_errors=1.2, number_of_samples=10**5, fbin=None, weighted=False):
         """
         Takes many subsamples of the big sample cluster. Puts the resulting distribution in sigma_1d
-        :param sample_size:
-        :param measured_errors:
-        :param number_of_samples:
-        :param fbin:
-        :return:
+        :param sample_size:         Number of stars in observed sample to compare to (integer, default=12)
+        :param measured_errors:     Either the typical error on the measured radial velocity or each of the measured
+                                    radial velocity errors, default=1.2.
+        :param number_of_samples:   The number of subsamples to take
+        :param fbin:                The binary fraction of the simulated cluster.
+        :param weighted:            Adds turns the starndard deviation into a weighted standard deviation if set to True
+                                    Only meaningful if an array of measured errors is provided. weights are
+                                    1 / measured_error*2
+        :return: An array of velocity dispersions, array with size=number_of_samples
         """
-        if type(measured_errors) != float:
+        if not isinstance(measured_errors, float):
             if sample_size != len(measured_errors):
-                print "Changing the subsample size from %i to %i to match the measured errors!" % \
-                      (sample_size, len(measured_errors))
+                print("Changing the subsample size from %i to %i to match the measured errors!" %
+                      (sample_size, len(measured_errors)))
 
-        self.fbin = fbin
+        if not isinstance(fbin, type(None)):
+            self.fbin = fbin
+
         self.calculate_radial_velocity()
 
-        sigma_1d = np.std(np.random.choice(self.radial_velocities, (number_of_samples, sample_size)) +
-                        np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
-        self.sigma_1d = sigma_1d
-        return sigma_1d
+        # Alternative way of calculating the
+        if weighted:
+            weights = 1 / measured_errors**2
+            rvs = (np.random.choice(self.radial_velocities, (number_of_samples, sample_size)) +
+                   np.random.normal(0, measured_errors, (number_of_samples, sample_size)))
+            rv_mean = np.sum(rvs * weights, axis=1) / np.sum(weights)
+            # self.sigma_1d = (np.sum(weights * (rvs.T - rv_mean).T**2, axis=1) / (((sample_size - 1.) / sample_size) * np.sum(weights)))**0.5
+            self.sigma_1d = (np.sum(weights * (rvs.T - rv_mean).T**2, axis=1) / (np.sum(weights)))**0.5
+        else:
+            self.sigma_1d = np.std(np.random.choice(self.radial_velocities, (number_of_samples, sample_size)) +
+                               np.random.normal(0, measured_errors, (number_of_samples, sample_size)), axis=1, ddof=1)
+
+        return self.sigma_1d
 
     def check_initialization(self):
         """
@@ -300,7 +329,7 @@ class RVMC:
         plt.show()
 
 
-def plot_sigma_1d(sigma1d, labels, colors=None):
+def plot_sigma_1d(sigma1d, labels, colors=None, hide_median=False):
     """
     Plots the distribution of
     :param sigma1d:
@@ -310,86 +339,54 @@ def plot_sigma_1d(sigma1d, labels, colors=None):
     if type(colors) == type(None):
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         if len(sigma1d) > 10:
-            print "Please specify your own colors if more than 10 distributions are to be plotted"
+            print("Please specify your own colors if more than 10 distributions are to be plotted")
             return
 
     n_distributions = len(sigma1d)
     if len(labels) != n_distributions:
-        print "Warning! Number of labels does not match number of distributions"
+        print("Warning! Number of labels does not match number of distributions")
         return
 
     fig, ax = plt.subplots(1,1, figsize=(6,5))
 
     for i, dist in enumerate(sigma1d):
         ax.hist(dist, histtype="step", bins=np.linspace(0, 100, 200), label=labels[i], density=True, color=colors[i], lw=1.5)
-        if len(sigma1d) < 10:
-            ax.axvline(np.median(dist), color=colors[i])
+        if len(sigma1d) < 1000 and not hide_median:
+            ax.axvline(np.median(dist), color=colors[i], zorder=0.1, ls="--")
 
     ax.set_xlabel(r"$\sigma_{\rm 1D}$ [km s$^{-1}$]")
     ax.set_ylabel(r"Frequency [(km s$^{-1}$)$^{-1}$]")
 
-    if len(labels) < 10:
+    if len(labels) <= 10:
         ax.legend()
     ax.set_xlim([0, 50])
-    ax.set_ylim([0, 0.1])
+    # ax.set_ylim([0, 0.1])
     plt.tight_layout()
     # plt.show()
     return fig, ax
 
 
 if __name__ == "__main__":
-
-    # initialize the generation of the parameters
-    rv = RVMC(fbin=0.7)
-
-    # Check if the distributions are as desired
-    rv.check_initialization()
-
-    # Change a parameter
-    rv.eccentricity[:] = 0
-    rv.eccentric_anomaly = rv.calculate_eccentric_anomaly()
-
-    # Check again
-    rv.check_initialization()
-
-    # Calculate the velocities of the binaries once parameter distributions are as desired
-    rv.calculate_binary_velocities()
-
-    # Generate many subsamples
-    rv.subsample()
-
-    fig, ax = plot_sigma_1d([rv.sigma_1d], ["fbin=0.7"])
-    ax.set_xlim([0, 50])
-    # ax.set_ylim([0, 0.1])
-    plt.show()
-
-    # Use the numerically calculated orbits file to check the results
-    rv_num = RVMC(numerical_orbits=True, fbin=0.7)
-    rv_num.calculate_binary_velocities()
-
-    RV_errors = np.array([0.8, 2.3, 1.0, 1.8, 0.8, 1.0, 1.4, 2.5, 2.0, 0.4, 1.5, 0.6])
-    # Generate subsamples, note that the size of the sub-samples can be varied as well as the binary fraction
-    rv_num.subsample(sample_size=12, fbin=0.7, measured_errors=RV_errors)
-    rv.subsample(sample_size=12, fbin=0.7, measured_errors=RV_errors)
-    data_sana = np.loadtxt("data_sana/fbin_0.70.dat").T
-
-    fig, ax = plot_sigma_1d([rv.sigma_1d, rv_num.sigma_1d, data_sana], ["Standard", "Numerical orbits", "Sana (2017)"])
-    ax.set_xlim([0, 50])
-    # ax.set_ylim([0, 0.1])
-    plt.show()
-
     # Example of generating many sigma1d distributions for many binary fractions.
     import matplotlib.cm as cmx
     from matplotlib.colors import Normalize
     from tqdm import tqdm
+    import time
 
-    print "Generating sample"
-    rv = RVMC()
+    # Some text settings I like to use.
+    # plt.rcParams['text.usetex'] = True
+    # plt.rcParams["font.family"] = "serif"
+    # plt.rcParams["font.serif"] = "Latin Modern Math"
+
+    print("Generating sample")
+    start = time.time()
+    rv = RVMC(number_of_stars=10**6)
     rv.calculate_binary_velocities()
+    print(f"It took {time.time() - start:.2f} seconds to generate radial velocities")
 
-    print "Generating subsamples"
-    fbins = np.linspace(0, 1, 100)
-    dists = [rv.subsample(fbin=fbin) for fbin in tqdm(fbins)]
+    print("Generating subsamples")
+    fbins = np.linspace(0, 1, 11)
+    dists = [rv.subsample(fbin=fbin, number_of_samples=10**6) for fbin in tqdm(fbins)]
     labels = [r"$f_{\rm bin}$ = %.3g" % fbin for fbin in fbins]
 
     norm = Normalize(0, 1)
@@ -397,8 +394,33 @@ if __name__ == "__main__":
     scalarmap._A = []
     colors = [scalarmap.to_rgba(fbin) for fbin in fbins]
 
-    print "Plotting"
-    plot_sigma_1d(dists, labels, colors=colors)
+    print("Plotting")
+    fig, ax = plot_sigma_1d(dists, labels, colors=colors)
+    cb = plt.colorbar(scalarmap, ax=ax)
+    cb.set_label("Binary fraction")
+    plt.xlim([0, 100])
+    plt.tight_layout()
     plt.show()
 
+    # Testing eccentricities, runs the code for differing eccentricity distributions.
+    sigma1d = []
+    e_powers = np.linspace(-0.5, 3, 11)
+    for e_power in tqdm(e_powers):
+        rv = RVMC(number_of_stars=10**6, e_power=e_power)#, min_period=10)
+        rv.calculate_binary_velocities()
+        sigma1d.append(rv.subsample(fbin=0.7, number_of_samples=10 ** 6))
 
+    labels = [rf"e power = {e_power:.3g}" for e_power in e_powers]
+
+    norm = Normalize(e_powers[0], e_powers[-1])
+    scalarmap = cmx.ScalarMappable(norm=norm, cmap="viridis")
+    scalarmap._A = []
+    colors = [scalarmap.to_rgba(e_power) for e_power in e_powers]
+
+    print("Plotting")
+    fig, ax = plot_sigma_1d(sigma1d, labels, colors=colors)
+    cb = plt.colorbar(scalarmap, ax=ax)
+    cb.set_label("e power")
+    plt.xlim([0, 60])
+    # plt.savefig("eccentricity test.pdf")
+    plt.show()
